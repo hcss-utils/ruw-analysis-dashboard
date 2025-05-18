@@ -288,10 +288,14 @@ def create_burst_summary_chart(
     else:
         # Create a custom color scale based on the provided color
         import colorsys
-        from matplotlib.colors import to_rgb
+        
+        # Helper function to convert hex to RGB without matplotlib
+        def hex_to_rgb(hex_color):
+            hex_color = hex_color.lstrip('#')
+            return tuple(int(hex_color[i:i+2], 16)/255.0 for i in (0, 2, 4))
         
         # Convert hex to RGB
-        r, g, b = to_rgb(color)
+        r, g, b = hex_to_rgb(color)
         # Convert RGB to HSV
         h, s, v = colorsys.rgb_to_hsv(r, g, b)
         
@@ -418,9 +422,13 @@ def create_burst_timeline(
     if color_base:
         # Create a custom color scale based on the provided base color
         import colorsys
-        from matplotlib.colors import to_rgb
         
-        r, g, b = to_rgb(color_base)
+        # Helper function to convert hex to RGB without matplotlib
+        def hex_to_rgb(hex_color):
+            hex_color = hex_color.lstrip('#')
+            return tuple(int(hex_color[i:i+2], 16)/255.0 for i in (0, 2, 4))
+        
+        r, g, b = hex_to_rgb(color_base)
         h, s, v = colorsys.rgb_to_hsv(r, g, b)
         
         colors = []
