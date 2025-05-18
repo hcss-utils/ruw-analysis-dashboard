@@ -1,0 +1,426 @@
+/* Custom CSS for the Russian-Ukrainian War Data Analysis Dashboard */
+
+/* =========== General Styles =========== */
+body, html {
+    max-width: 100%;
+    overflow-x: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* Dashboard container for responsive layout */
+.dashboard-container {
+    width: 100%;
+    max-width: 1800px;
+    margin: 0 auto;
+    padding: 0 15px;
+}
+
+/* Ultra-wide screen optimization */
+@media (min-width: 2000px) {
+    .dashboard-container {
+        max-width: 80%;
+    }
+}
+
+/* =========== Header Styling =========== */
+.app-header {
+    background-color: #13376f;
+    color: white;
+    padding: 10px 20px;
+    margin-bottom: 20px;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.app-header h2 {
+    margin: 0;
+    font-weight: 500;
+}
+
+/* =========== Tab Styling =========== */
+/* Make tabs much thinner */
+.dash-tab {
+    padding: 4px 12px !important;
+    height: 32px !important;
+    line-height: 24px !important;
+    margin-bottom: -1px;
+}
+
+/* Selected tab styling */
+.dash-tab--selected {
+    font-weight: 500;
+    border-top: 2px solid #13376f !important;
+}
+
+/* Tab content padding */
+.dash-tab-content {
+    padding-top: 10px;
+}
+
+/* =========== Button Styling =========== */
+/* Button styling to match header */
+.about-button {
+    background-color: #13376f !important;
+    border-color: #13376f !important;
+    color: white !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+/* All primary buttons */
+.btn-primary, .btn-secondary, .btn-success, .btn-info {
+    background-color: #13376f !important;
+    border-color: #13376f !important;
+}
+
+.btn-primary:hover, .btn-secondary:hover, .btn-success:hover, .btn-info:hover {
+    background-color: #0d2b5e !important;
+    border-color: #0d2b5e !important;
+}
+
+/* =========== Card Styling =========== */
+/* Card header styling */
+.card-header {
+    background-color: #13376f !important;
+    color: white !important;
+    padding: 0.75rem 1rem;
+}
+
+/* Filter card styling to make it more compact */
+.filter-card .card-body {
+    padding: 1rem 1rem 0.5rem 1rem;
+}
+
+/* About box styling */
+.about-box {
+    background-color: #f9f9f9;
+    border: 1px solid #eee;
+    border-radius: 5px;
+    padding: 1rem;
+    margin: 1rem 0;
+}
+
+.about-box h5 {
+    color: #13376f;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+/* =========== Date Picker Styling =========== */
+/* Compact date picker for fitting in one row */
+.DateInput {
+    width: 85px !important;
+}
+
+.DateInput_input {
+    padding: 2px 8px !important;
+    font-size: 0.8rem !important;
+}
+
+.DateRangePickerInput_arrow {
+    padding: 0 5px !important;
+}
+
+.DateRangePickerInput {
+    background-color: #fff;
+    border: 1px solid #ccc !important;
+    display: inline-block;
+    border-radius: 4px;
+}
+
+/* =========== Dropdown Styling =========== */
+/* Make dropdowns more compact */
+.Select-control, .Select-menu-outer {
+    font-size: 0.9rem !important;
+}
+
+.Select-control {
+    height: 34px;
+}
+
+.Select-placeholder, .Select--single > .Select-control .Select-value {
+    line-height: 34px;
+}
+
+/* =========== Filter Row Styling =========== */
+/* Ensure filter row stays in one line */
+.filter-row {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: flex-end;
+    margin-bottom: 10px;
+}
+
+.filter-item {
+    margin-right: 12px;
+    min-width: 140px;
+    max-width: 180px;
+}
+
+.filter-item-date {
+    min-width: 210px;
+    max-width: 220px;
+}
+
+/* =========== Filter Layout Improvements =========== */
+/* Ensure filter row stays on one line and aligns properly */
+.filter-card .align-items-end {
+    display: flex;
+    flex-wrap: nowrap !important;
+    align-items: flex-end !important;
+}
+
+/* Make dropdowns narrower but still readable */
+.filter-card .language-dropdown {
+    width: 120px !important;
+    min-width: 120px !important;
+}
+
+.filter-card .database-dropdown {
+    width: 140px !important;
+    min-width: 140px !important;
+}
+
+.filter-card .source-type-dropdown {
+    width: 140px !important;
+    min-width: 140px !important;
+}
+
+/* Make date picker more compact but still readable */
+.filter-card .DateInput {
+    width: 75px !important;
+}
+
+.filter-card .DateRangePickerInput {
+    max-width: 200px !important;
+}
+
+/* Space between filter elements */
+.filter-card .pe-2 {
+    padding-right: 0.5rem !important;
+}
+
+/* Push Apply Filters button to right */
+.filter-card .flex-grow-1 {
+    flex-grow: 1 !important;
+    min-width: 10px !important;
+}
+
+/* Fix button vertical alignment */
+.filter-card .mt-1 {
+    margin-top: 0.25rem !important;
+}
+
+/* Fix gutters for smaller spaces between elements */
+.filter-card .g-0 > * {
+    padding-left: 4px !important;
+    padding-right: 4px !important;
+}
+
+/* Responsive adjustments */
+@media (max-width: 992px) {
+    .filter-row {
+        flex-wrap: wrap;
+    }
+    
+    .filter-item, .filter-item-date {
+        margin-bottom: 10px;
+    }
+    
+    .filter-card .card-body {
+        overflow-x: auto;
+        padding-bottom: 10px !important;
+    }
+    
+    .filter-card .align-items-end {
+        min-width: 800px;
+    }
+}
+
+/* =========== Loading Spinner =========== */
+/* Make loading spinner more visible and center it */
+._dash-loading {
+    position: fixed !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    width: 80px !important;
+    height: 80px !important;
+    border: 8px solid #f3f3f3 !important;
+    border-top: 8px solid #13376f !important;
+    z-index: 9999 !important;
+}
+
+/* Consistent spinner styling */
+.dash-spinner .dash-spinner-inner {
+    border-top-color: #13376f !important;
+}
+
+/* =========== Modal Styling =========== */
+/* Modal styling fixes - ensure tab-specific modals work correctly */
+.modal {
+    z-index: 1050;
+    display: none;
+}
+
+.modal.show {
+    display: block;
+}
+
+.modal-backdrop {
+    z-index: 1040;
+}
+
+/* Ensure no overlapping modals */
+.modal + .modal {
+    z-index: 1060;
+}
+
+/* Modal header coloring */
+.modal-header {
+    background-color: #13376f !important;
+    color: white !important;
+}
+
+/* Modal close button */
+.modal button.close {
+    color: white;
+    opacity: 0.8;
+}
+
+.modal button.close:hover {
+    opacity: 1;
+}
+
+/* =========== Chart Styling =========== */
+/* Responsive sunburst chart */
+.sunburst-container {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+}
+
+/* Reduce vertical gap between sunburst and title */
+.sunburst-chart-container {
+    margin-bottom: 10px !important;
+}
+
+/* Tooltip styling for the sunburst chart */
+.js-plotly-plot .plotly-notifier {
+    font-size: 14px !important;
+}
+
+/* Selection title styling - match the style from the screenshot */
+.selection-title {
+    color: #2196F3;
+    font-size: 1.5rem;
+    font-weight: 500;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+    text-align: center;
+}
+
+/* Timeline caption styling - make it stick properly */
+.timeline-caption {
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 100;
+    padding: 10px;
+    border-bottom: 2px solid #eee;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+/* =========== Text & Message Styling =========== */
+/* Prettier select message */
+.select-message {
+    font-size: 1.2rem;
+    color: #666;
+    text-align: center;
+    padding: 2rem;
+    font-style: italic;
+    background-color: #f9f9f9;
+    border-radius: 5px;
+    border: 1px solid #eee;
+    margin-top: 2rem;
+}
+
+/* =========== Pagination Controls =========== */
+/* Pagination controls styling */
+.pagination-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 20px 0;
+}
+
+/* =========== Theme Colors =========== */
+/* Common colors used throughout the app */
+.theme-blue {
+    color: #13376f;
+}
+
+.theme-background {
+    background-color: #13376f;
+    color: white;
+}
+
+.russian-color {
+    color: #E41A1C;
+}
+
+.western-color {
+    color: #377EB8;
+}
+
+.neutral-color {
+    color: #4DAF4A;
+}
+
+/* =========== Animation =========== */
+/* Simple fade-in animation for content */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+/* =========== Media Queries =========== */
+/* Small devices (landscape phones) */
+@media (max-width: 576px) {
+    .dash-tab {
+        padding: 2px 8px !important;
+        font-size: 0.8rem !important;
+    }
+    
+    .app-header h2 {
+        font-size: 1.5rem;
+    }
+}
+
+/* Medium devices (tablets) */
+@media (max-width: 768px) {
+    .filter-row {
+        flex-direction: column;
+    }
+    
+    .filter-item, .filter-item-date {
+        width: 100%;
+        max-width: none;
+        margin-right: 0;
+    }
+}
+
+/* Large devices (desktops) */
+@media (max-width: 992px) {
+    .dashboard-container {
+        padding: 0 10px;
+    }
+}

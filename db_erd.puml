@@ -1,0 +1,5 @@
+@startuml
+!theme plain
+skinparam linetype ortho
+
+@enduml

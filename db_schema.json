@@ -1,0 +1,720 @@
+{
+  "tables": {
+    "alembic_version": {
+      "columns": [
+        {
+          "name": "version_num",
+          "type": "character varying",
+          "nullable": false,
+          "default": null
+        }
+      ],
+      "primary_keys": [
+        "version_num"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "alembic_version_pkc",
+          "columns": [
+            "version_num"
+          ],
+          "unique": true
+        }
+      ],
+      "row_count": 1
+    },
+    "classifications": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false,
+          "default": "nextval('classifications_id_seq'::regclass)"
+        },
+        {
+          "name": "chunk_id",
+          "type": "integer",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "chat_id",
+          "type": "character varying",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "model",
+          "type": "character varying",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp without time zone",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "done_reason",
+          "type": "character varying",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "total_duration",
+          "type": "bigint",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "usage_prompt_tokens",
+          "type": "integer",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "usage_completion_tokens",
+          "type": "integer",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "usage_tokens",
+          "type": "integer",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "request",
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "raw_response",
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "response",
+          "type": "text",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_keys": [
+        "id"
+      ],
+      "foreign_keys": [
+        {
+          "name": "classifications_chunk_id_fkey",
+          "columns": [
+            "chunk_id"
+          ],
+          "referred_table": "document_section_chunk",
+          "referred_columns": [
+            "id"
+          ]
+        }
+      ],
+      "indexes": [],
+      "row_count": 161296
+    },
+    "document_section": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false,
+          "default": "nextval('document_section_id_seq'::regclass)"
+        },
+        {
+          "name": "uploaded_document_id",
+          "type": "integer",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "parent_document_section_id",
+          "type": "integer",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "heading_title",
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "heading_depth",
+          "type": "integer",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "content",
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "sequence_number",
+          "type": "integer",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "path",
+          "type": "USER-DEFINED",
+          "nullable": false,
+          "default": null
+        }
+      ],
+      "primary_keys": [
+        "id"
+      ],
+      "foreign_keys": [
+        {
+          "name": "document_section_parent_document_section_id_fkey",
+          "columns": [
+            "parent_document_section_id"
+          ],
+          "referred_table": "document_section",
+          "referred_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "document_section_uploaded_document_id_fkey",
+          "columns": [
+            "uploaded_document_id"
+          ],
+          "referred_table": "uploaded_document",
+          "referred_columns": [
+            "id"
+          ]
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_document_section_path",
+          "columns": [
+            "path"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_document_section_uploaded_document_id",
+          "columns": [
+            "uploaded_document_id"
+          ],
+          "unique": false
+        }
+      ],
+      "row_count": 524964
+    },
+    "document_section_chunk": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false,
+          "default": "nextval('document_section_chunk_id_seq'::regclass)"
+        },
+        {
+          "name": "document_section_id",
+          "type": "integer",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "chunk_index",
+          "type": "integer",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "content",
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "embedding",
+          "type": "USER-DEFINED",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "embedding_model",
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "named_entities",
+          "type": "jsonb",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "keywords",
+          "type": "ARRAY",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_keys": [
+        "id"
+      ],
+      "foreign_keys": [
+        {
+          "name": "document_section_chunk_document_section_id_fkey",
+          "columns": [
+            "document_section_id"
+          ],
+          "referred_table": "document_section",
+          "referred_columns": [
+            "id"
+          ]
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_embedding",
+          "columns": [
+            "embedding"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_document_section_chunk_document_section_id",
+          "columns": [
+            "document_section_id"
+          ],
+          "unique": false
+        }
+      ],
+      "row_count": 473734
+    },
+    "logs": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false,
+          "default": "nextval('logs_id_seq'::regclass)"
+        },
+        {
+          "name": "document_id",
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "database",
+          "type": "character varying",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "stage",
+          "type": "character varying",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "model",
+          "type": "character varying",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp without time zone",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "done",
+          "type": "boolean",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "done_reason",
+          "type": "character varying",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "total_duration",
+          "type": "bigint",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "load_duration",
+          "type": "bigint",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "prompt_eval_count",
+          "type": "integer",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "prompt_eval_duration",
+          "type": "bigint",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "eval_count",
+          "type": "integer",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "eval_duration",
+          "type": "bigint",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "raw_response",
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "response",
+          "type": "text",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_keys": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [],
+      "row_count": 548725
+    },
+    "taxonomy": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false,
+          "default": "nextval('taxonomy_id_seq'::regclass)"
+        },
+        {
+          "name": "classification_id",
+          "type": "integer",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "chunk_id",
+          "type": "integer",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "category",
+          "type": "character varying",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "subcategory",
+          "type": "character varying",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "sub_subcategory",
+          "type": "character varying",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "taxonomy_reasoning",
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "chunk_level_reasoning",
+          "type": "text",
+          "nullable": false,
+          "default": null
+        }
+      ],
+      "primary_keys": [
+        "id"
+      ],
+      "foreign_keys": [
+        {
+          "name": "taxonomy_chunk_id_fkey",
+          "columns": [
+            "chunk_id"
+          ],
+          "referred_table": "document_section_chunk",
+          "referred_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "taxonomy_classification_id_fkey",
+          "columns": [
+            "classification_id"
+          ],
+          "referred_table": "classifications",
+          "referred_columns": [
+            "id"
+          ]
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_taxonomy_chunk_id",
+          "columns": [
+            "chunk_id"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_taxonomy_category",
+          "columns": [
+            "category"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_taxonomy_subcategory",
+          "columns": [
+            "subcategory"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_taxonomy_sub_subcategory",
+          "columns": [
+            "sub_subcategory"
+          ],
+          "unique": false
+        }
+      ],
+      "row_count": 213965
+    },
+    "taxonomy_clusters_kmeans": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false,
+          "default": "nextval('taxonomy_clusters_kmeans_id_seq'::regclass)"
+        },
+        {
+          "name": "taxonomic_element",
+          "type": "character varying",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "cluster_id",
+          "type": "character varying",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "cluster_label",
+          "type": "character varying",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "span_ids",
+          "type": "ARRAY",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "summary",
+          "type": "json",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_keys": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "uq_tax_element_cluster_kmeans",
+          "columns": [
+            "taxonomic_element",
+            "cluster_id"
+          ],
+          "unique": true
+        },
+        {
+          "name": "ix_taxonomy_clusters_kmeans_id",
+          "columns": [
+            "id"
+          ],
+          "unique": false
+        }
+      ],
+      "row_count": 309
+    },
+    "taxonomy_granular": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false,
+          "default": "nextval('taxonomy_granular_id_seq'::regclass)"
+        },
+        {
+          "name": "chunk_te_id",
+          "type": "integer",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "text_span",
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "justification",
+          "type": "text",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "embedding",
+          "type": "USER-DEFINED",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_keys": [
+        "id"
+      ],
+      "foreign_keys": [
+        {
+          "name": "taxonomy_granular_chunk_te_id_fkey",
+          "columns": [
+            "chunk_te_id"
+          ],
+          "referred_table": "taxonomy",
+          "referred_columns": [
+            "id"
+          ]
+        }
+      ],
+      "indexes": [],
+      "row_count": 686259
+    },
+    "uploaded_document": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false,
+          "default": "nextval('uploaded_document_id_seq'::regclass)"
+        },
+        {
+          "name": "document_id",
+          "type": "character varying",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "database",
+          "type": "character varying",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "date",
+          "type": "date",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "author",
+          "type": "character varying",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "language",
+          "type": "character varying",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "is_full_text_present",
+          "type": "boolean",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "text",
+          "type": "text",
+          "nullable": true,
+          "default": null
+        },
+        {
+          "name": "text_en",
+          "type": "text",
+          "nullable": true,
+          "default": null
+        }
+      ],
+      "primary_keys": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "idx_uploaded_document_language",
+          "columns": [
+            "language"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_uploaded_document_database",
+          "columns": [
+            "database"
+          ],
+          "unique": false
+        }
+      ],
+      "row_count": 313194
+    }
+  },
+  "statistics": {
+    "tables": 9,
+    "columns": 74,
+    "primary_keys": 9,
+    "foreign_keys": 7,
+    "indexes": 13,
+    "nullable_columns": 31,
+    "total_rows": 2922447
+  }
+}

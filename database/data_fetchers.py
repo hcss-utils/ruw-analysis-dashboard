@@ -1,0 +1,770 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+"""
+Data fetching functions for the Russian-Ukrainian War Data Analysis Dashboard.
+These functions handle database queries and return data in the appropriate format.
+"""
+
+import logging
+import time
+import re
+from typing import Dict, List, Tuple, Optional, Any, Union
+from datetime import datetime, timedelta
+
+import pandas as pd
+from sqlalchemy import text
+
+import sys
+import os
+
+# Add the project root to the path to import modules
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from config import SOURCE_TYPE_FILTERS
+from database.connection import get_engine
+from utils.cache import cached
+
+
+@cached(timeout=300)
+def fetch_all_databases() -> List[str]:
+    """
+    Fetch all available databases for dropdown options.
+    
+    Returns:
+        List[str]: List of database names
+    """
+    try:
+        query = "SELECT DISTINCT database FROM uploaded_document ORDER BY database;"
+        engine = get_engine()
+        df = pd.read_sql(text(query), engine)
+        return df['database'].tolist()
+    except Exception as e:
+        logging.error(f"Error fetching databases: {e}")
+        return []
+
+
+@cached(timeout=3600)  # Cache for 1 hour as this rarely changes
+def fetch_date_range() -> Tuple[Optional[datetime], Optional[datetime]]:
+    """
+    Fetch min and max dates in the database for date picker.
+    
+    Returns:
+        Tuple[Optional[datetime], Optional[datetime]]: Tuple of (min_date, max_date)
+    """
+    try:
+        query = """
+        SELECT MIN(date) as min_date, MAX(date) as max_date
+        FROM uploaded_document
+        WHERE date IS NOT NULL;
+        """
+        engine = get_engine()
+        df = pd.read_sql(text(query), engine)
+        return df['min_date'].iloc[0], df['max_date'].iloc[0]
+    except Exception as e:
+        logging.error(f"Error fetching date range: {e}")
+        return None, None
+
+
+def _build_source_type_condition(source_type: Optional[str]) -> str:
+    """
+    Build SQL condition for source type filtering.
+    
+    Args:
+        source_type: Source type filter value
+        
+    Returns:
+        str: SQL condition for the source type
+    """
+    if not source_type or source_type == 'ALL':
+        return ""
+        
+    if source_type in SOURCE_TYPE_FILTERS:
+        return f"AND {SOURCE_TYPE_FILTERS[source_type]}"
+    
+    return ""
+
+
+@cached(timeout=300)
+def fetch_category_data(
+    selected_lang: Optional[str] = None, 
+    selected_db: Optional[str] = None, 
+    source_type: Optional[str] = None, 
+    date_range: Optional[Tuple[str, str]] = None
+) -> pd.DataFrame:
+    """
+    Fetch hierarchical category data with optional filters.
+    
+    Args:
+        selected_lang: Language filter
+        selected_db: Database filter
+        source_type: Source type filter
+        date_range: Date range filter as (start_date, end_date)
+        
+    Returns:
+        pd.DataFrame: DataFrame with category data or empty DataFrame on error
+    """
+    start_time = time.time()
+    logging.info(f"Fetching category data with lang={selected_lang}, db={selected_db}, source_type={source_type}")
+    
+    if selected_lang == 'ALL':
+        selected_lang = None
+    if selected_db == 'ALL':
+        selected_db = None
+    
+    query_parts = ["""
+    SELECT
+        t.category,
+        t.subcategory,
+        t.sub_subcategory,
+        COUNT(*) AS count
+    FROM taxonomy t
+    JOIN document_section_chunk dsc ON t.chunk_id = dsc.id
+    JOIN document_section ds ON dsc.document_section_id = ds.id
+    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+    WHERE 1=1
+    """]
+    
+    params = {}
+    
+    if selected_lang is not None:
+        query_parts.append("AND ud.language = :lang")
+        params['lang'] = selected_lang
+        
+    if selected_db is not None:
+        query_parts.append("AND ud.database = :db")
+        params['db'] = selected_db
+        
+    # Add source type filter
+    source_type_condition = _build_source_type_condition(source_type)
+    if source_type_condition:
+        query_parts.append(source_type_condition)
+    
+    if date_range and len(date_range) == 2 and date_range[0] and date_range[1]:
+        query_parts.append("AND ud.date BETWEEN :start_date AND :end_date")
+        params['start_date'] = date_range[0]
+        params['end_date'] = date_range[1]
+    
+    query_parts.append("GROUP BY t.category, t.subcategory, t.sub_subcategory")
+    
+    query = " ".join(query_parts)
+    
+    try:
+        engine = get_engine()
+        df = pd.read_sql(text(query), engine, params=params)
+        end_time = time.time()
+        logging.info(f"Category data fetched in {end_time - start_time:.2f} seconds. {len(df)} rows returned.")
+        return df
+    except Exception as e:
+        logging.error(f"Error fetching category data: {e}")
+        return pd.DataFrame()
+
+
+@cached(timeout=300)
+def fetch_text_chunks(
+    level: str,
+    value: str,
+    selected_lang: Optional[str] = None,
+    selected_db: Optional[str] = None,
+    source_type: Optional[str] = None,
+    date_range: Optional[Tuple[str, str]] = None
+) -> pd.DataFrame:
+    """
+    Fetch all relevant text chunks for a specific category level with optional filters.
+    
+    Args:
+        level: Category level (category, subcategory, or sub_subcategory)
+        value: Value to filter on
+        selected_lang: Language filter
+        selected_db: Database filter
+        source_type: Source type filter
+        date_range: Date range filter as (start_date, end_date)
+        
+    Returns:
+        pd.DataFrame: DataFrame with text chunks or empty DataFrame on error
+    """
+    start_time = time.time()
+    logging.info(f"Fetching text chunks for {level}={value}, lang={selected_lang}, db={selected_db}")
+    
+    if selected_lang == 'ALL':
+        selected_lang = None
+    if selected_db == 'ALL':
+        selected_db = None
+    
+    # Whitelist approach to avoid injection
+    allowed_levels = ['category', 'subcategory', 'sub_subcategory']
+    if level not in allowed_levels:
+        logging.error(f"Invalid level: {level}")
+        return pd.DataFrame()
+
+    # Start building the query
+    query_parts = [f"""
+    SELECT
+        t.category,
+        t.subcategory,
+        t.sub_subcategory,
+        dsc.content AS chunk_text,
+        t.chunk_level_reasoning AS reasoning,
+        ud.document_id,
+        ud.database,
+        ds.heading_title,
+        ud.date,
+        ud.author
+    FROM taxonomy t
+    JOIN document_section_chunk dsc ON t.chunk_id = dsc.id
+    JOIN document_section ds ON dsc.document_section_id = ds.id
+    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+    WHERE t.{level} = :value
+    """]
+    
+    params = {'value': value}
+    
+    if selected_lang is not None:
+        query_parts.append("AND ud.language = :lang")
+        params['lang'] = selected_lang
+        
+    if selected_db is not None:
+        query_parts.append("AND ud.database = :db")
+        params['db'] = selected_db
+
+    # Add source type filter
+    source_type_condition = _build_source_type_condition(source_type)
+    if source_type_condition:
+        query_parts.append(source_type_condition)
+    
+    if date_range and len(date_range) == 2 and date_range[0] and date_range[1]:
+        query_parts.append("AND ud.date BETWEEN :start_date AND :end_date")
+        params['start_date'] = date_range[0]
+        params['end_date'] = date_range[1]
+    
+    query_parts.append("ORDER BY ud.date DESC")
+    
+    query = " ".join(query_parts)
+
+    try:
+        engine = get_engine()
+        df = pd.read_sql(text(query), engine, params=params)
+        end_time = time.time()
+        logging.info(f"Text chunks fetched in {end_time - start_time:.2f} seconds. {len(df)} rows returned.")
+        return df
+    except Exception as e:
+        logging.error(f"Error fetching text chunks: {e}")
+        return pd.DataFrame()
+
+
+@cached(timeout=300)
+def fetch_timeline_data(
+    level: str,
+    value: str,
+    selected_lang: Optional[str] = None,
+    selected_db: Optional[str] = None,
+    source_type: Optional[str] = None,
+    date_range: Optional[Tuple[str, str]] = None
+) -> pd.DataFrame:
+    """
+    Fetch timeline data (counts per month) for a specific category level.
+    
+    Args:
+        level: Category level (category, subcategory, or sub_subcategory)
+        value: Value to filter on
+        selected_lang: Language filter
+        selected_db: Database filter
+        source_type: Source type filter
+        date_range: Date range filter as (start_date, end_date)
+        
+    Returns:
+        pd.DataFrame: DataFrame with timeline data or empty DataFrame on error
+    """
+    start_time = time.time()
+    logging.info(f"Fetching timeline data for {level}={value}")
+    
+    if selected_lang == 'ALL':
+        selected_lang = None
+    if selected_db == 'ALL':
+        selected_db = None
+    
+    # Whitelist approach to avoid injection
+    allowed_levels = ['category', 'subcategory', 'sub_subcategory']
+    if level not in allowed_levels:
+        logging.error(f"Invalid level: {level}")
+        return pd.DataFrame()
+
+    # Efficiently get counts per month directly from DB
+    query_parts = [f"""
+    SELECT
+        DATE_TRUNC('month', ud.date) AS month,
+        COUNT(*) AS count
+    FROM taxonomy t
+    JOIN document_section_chunk dsc ON t.chunk_id = dsc.id
+    JOIN document_section ds ON dsc.document_section_id = ds.id
+    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+    WHERE t.{level} = :value
+    AND ud.date IS NOT NULL
+    """]
+    
+    params = {'value': value}
+    
+    if selected_lang is not None:
+        query_parts.append("AND ud.language = :lang")
+        params['lang'] = selected_lang
+        
+    if selected_db is not None:
+        query_parts.append("AND ud.database = :db")
+        params['db'] = selected_db
+
+    # Add source type filter
+    source_type_condition = _build_source_type_condition(source_type)
+    if source_type_condition:
+        query_parts.append(source_type_condition)
+    
+    if date_range and len(date_range) == 2 and date_range[0] and date_range[1]:
+        query_parts.append("AND ud.date BETWEEN :start_date AND :end_date")
+        params['start_date'] = date_range[0]
+        params['end_date'] = date_range[1]
+    
+    query_parts.append("GROUP BY DATE_TRUNC('month', ud.date) ORDER BY month")
+    
+    query = " ".join(query_parts)
+
+    try:
+        engine = get_engine()
+        df = pd.read_sql(text(query), engine, params=params)
+        df['month'] = pd.to_datetime(df['month'])
+        df['month_str'] = df['month'].dt.strftime('%Y-%m')
+        end_time = time.time()
+        logging.info(f"Timeline data fetched in {end_time - start_time:.2f} seconds. {len(df)} rows returned.")
+        return df
+    except Exception as e:
+        logging.error(f"Error fetching timeline data: {e}")
+        return pd.DataFrame()
+
+
+@cached(timeout=300)
+def fetch_search_category_data(
+    search_mode: str,
+    search_term: str,
+    selected_lang: Optional[str] = None,
+    selected_db: Optional[str] = None,
+    source_type: Optional[str] = None,
+    date_range: Optional[Tuple[str, str]] = None
+) -> pd.DataFrame:
+    """
+    Fetch category data filtered by search criteria with optional filters.
+    """
+    start_time = time.time()
+    logging.info(f"Fetching search category data for {search_mode}: '{search_term}'")
+    
+    if selected_lang == 'ALL':
+        selected_lang = None
+    if selected_db == 'ALL':
+        selected_db = None
+    
+    params = {}
+    
+    # Add search criteria based on mode
+    if search_mode == 'keyword':
+        # Use a simpler, more efficient query with an index hint
+        search_condition = "AND (to_tsvector('english', dsc.content) @@ plainto_tsquery('english', :search_term) OR to_tsvector('english', t.chunk_level_reasoning) @@ plainto_tsquery('english', :search_term))"
+        params['search_term'] = search_term
+    elif search_mode == 'boolean':
+        # Parse boolean search into PostgreSQL ts_query format
+        bool_query = search_term.replace(' AND ', ' & ').replace(' OR ', ' | ').replace(' NOT ', ' ! ')
+        search_condition = "AND (to_tsvector('english', dsc.content) @@ to_tsquery('english', :bool_query) OR to_tsvector('english', t.chunk_level_reasoning) @@ to_tsquery('english', :bool_query))"
+        params['bool_query'] = bool_query
+    elif search_mode == 'semantic':
+        # Fallback to faster text search
+        search_condition = "AND (to_tsvector('english', dsc.content) @@ plainto_tsquery('english', :search_term) OR to_tsvector('english', t.chunk_level_reasoning) @@ plainto_tsquery('english', :search_term))"
+        params['search_term'] = search_term
+    else:
+        # Invalid search mode
+        logging.error(f"Invalid search mode: {search_mode}")
+        return pd.DataFrame()
+    
+    # Optimize query to aggregate counts directly in the database
+    # Add more query hints and limits
+    query_parts = [f"""
+    SELECT
+        t.category,
+        t.subcategory,
+        t.sub_subcategory,
+        COUNT(*) AS count
+    FROM taxonomy t
+    JOIN document_section_chunk dsc ON t.chunk_id = dsc.id
+    JOIN document_section ds ON dsc.document_section_id = ds.id
+    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+    WHERE 1=1
+    {search_condition}
+    """]
+    
+    # Add filters
+    if selected_lang is not None:
+        query_parts.append("AND ud.language = :lang")
+        params['lang'] = selected_lang
+        
+    if selected_db is not None:
+        query_parts.append("AND ud.database = :db")
+        params['db'] = selected_db
+        
+    # Add source type filter
+    source_type_condition = _build_source_type_condition(source_type)
+    if source_type_condition:
+        query_parts.append(source_type_condition)
+    
+    if date_range and len(date_range) == 2 and date_range[0] and date_range[1]:
+        query_parts.append("AND ud.date BETWEEN :start_date AND :end_date")
+        params['start_date'] = date_range[0]
+        params['end_date'] = date_range[1]
+    
+    query_parts.append("GROUP BY t.category, t.subcategory, t.sub_subcategory")
+    query_parts.append("LIMIT 10000")  # Add a safety limit
+    
+    query = " ".join(query_parts)
+    
+    try:
+        engine = get_engine()
+        with engine.connect() as conn:
+            # Set a longer statement timeout for search queries
+            conn.execute(text("SET statement_timeout = '120000'"))  # 120 seconds instead of 30
+            df = pd.read_sql(text(query), conn, params=params)
+        
+        end_time = time.time()
+        logging.info(f"Search category data fetched in {end_time - start_time:.2f} seconds. {len(df)} rows returned.")
+        return df
+    except Exception as e:
+        logging.error(f"Error fetching search category data: {e}")
+        
+        # Try fallback to a simpler query that still gives useful results
+        try:
+            simplified_query = f"""
+            SELECT
+                t.category,
+                '' as subcategory,  -- Group by category only
+                '' as sub_subcategory,
+                COUNT(*) AS count
+            FROM taxonomy t
+            JOIN document_section_chunk dsc ON t.chunk_id = dsc.id
+            JOIN document_section ds ON dsc.document_section_id = ds.id
+            JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+            WHERE 1=1
+            {search_condition}
+            """
+            
+            # Add the same filters
+            for part in query_parts[1:-1]:  # Skip the original SELECT and the GROUP BY
+                if part.startswith("GROUP BY") or part.startswith("LIMIT"):
+                    continue
+                simplified_query += " " + part
+                
+            simplified_query += " GROUP BY t.category LIMIT 1000"
+            
+            with engine.connect() as conn:
+                conn.execute(text("SET statement_timeout = '60000'"))  # 60 seconds
+                df = pd.read_sql(text(simplified_query), conn, params=params)
+                
+            logging.info(f"Fallback query returned {len(df)} category results.")
+            return df
+        except Exception as fallback_error:
+            logging.error(f"Fallback query also failed: {fallback_error}")
+            return pd.DataFrame()
+    
+    # Optimize query to aggregate counts directly in the database
+    query_parts = [f"""
+    SELECT
+        t.category,
+        t.subcategory,
+        t.sub_subcategory,
+        COUNT(*) AS count
+    FROM taxonomy t
+    JOIN document_section_chunk dsc ON t.chunk_id = dsc.id
+    JOIN document_section ds ON dsc.document_section_id = ds.id
+    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+    WHERE 1=1
+    {search_condition}
+    """]
+    
+    # Add filters
+    if selected_lang is not None:
+        query_parts.append("AND ud.language = :lang")
+        params['lang'] = selected_lang
+        
+    if selected_db is not None:
+        query_parts.append("AND ud.database = :db")
+        params['db'] = selected_db
+        
+    # Add source type filter
+    source_type_condition = _build_source_type_condition(source_type)
+    if source_type_condition:
+        query_parts.append(source_type_condition)
+    
+    if date_range and len(date_range) == 2 and date_range[0] and date_range[1]:
+        query_parts.append("AND ud.date BETWEEN :start_date AND :end_date")
+        params['start_date'] = date_range[0]
+        params['end_date'] = date_range[1]
+    
+    query_parts.append("GROUP BY t.category, t.subcategory, t.sub_subcategory")
+    
+    query = " ".join(query_parts)
+    
+    try:
+        engine = get_engine()
+        with engine.connect() as conn:
+            # Set a reasonable statement timeout to prevent long-running queries
+            conn.execute(text("SET statement_timeout = '30000'"))  # 30 seconds
+            df = pd.read_sql(text(query), conn, params=params)
+        
+        end_time = time.time()
+        logging.info(f"Search category data fetched in {end_time - start_time:.2f} seconds. {len(df)} rows returned.")
+        return df
+    except Exception as e:
+        logging.error(f"Error fetching search category data: {e}")
+        return pd.DataFrame()
+
+
+def fetch_all_text_chunks_for_search(
+    search_mode: str,
+    search_term: str,
+    selected_lang: Optional[str] = None,
+    selected_db: Optional[str] = None,
+    source_type: Optional[str] = None,
+    date_range: Optional[Tuple[str, str]] = None,
+    limit: int = 500
+) -> pd.DataFrame:
+    """
+    Fetch text chunks matching search criteria with optional filters.
+    
+    Args:
+        search_mode: Search mode ('keyword', 'boolean', or 'semantic')
+        search_term: Search term
+        selected_lang: Language filter
+        selected_db: Database filter
+        source_type: Source type filter
+        date_range: Date range filter as (start_date, end_date)
+        limit: Maximum number of results to return
+        
+    Returns:
+        pd.DataFrame: DataFrame with search text chunks or empty DataFrame on error
+    """
+    start_time = time.time()
+    logging.info(f"Fetching text chunks for search {search_mode}: '{search_term}' with limit {limit}")
+    
+    if selected_lang == 'ALL':
+        selected_lang = None
+    if selected_db == 'ALL':
+        selected_db = None
+    
+    params = {}
+    
+    # Add search criteria based on mode
+    if search_mode == 'keyword':
+        # Search in both content and reasoning
+        search_condition = "AND (dsc.content ~* :pattern OR t.chunk_level_reasoning ~* :pattern)"
+        params['pattern'] = f"\\b{re.escape(search_term)}\\b"
+    elif search_mode == 'boolean':
+        # Parse boolean search into PostgreSQL ts_query format
+        bool_query = search_term.replace(' AND ', ' & ').replace(' OR ', ' | ').replace(' NOT ', ' ! ')
+        search_condition = "AND (to_tsvector('english', dsc.content) @@ to_tsquery('english', :bool_query) OR to_tsvector('english', t.chunk_level_reasoning) @@ to_tsquery('english', :bool_query))"
+        params['bool_query'] = bool_query
+    elif search_mode == 'semantic':
+        # Fallback to whole word search for now
+        logging.warning("Semantic search not implemented, falling back to whole word search")
+        search_condition = "AND (dsc.content ~* :pattern OR t.chunk_level_reasoning ~* :pattern)"
+        params['pattern'] = f"\\b{re.escape(search_term)}\\b"
+    else:
+        # Invalid search mode
+        logging.error(f"Invalid search mode: {search_mode}")
+        return pd.DataFrame()
+    
+    # Build query with appropriate conditions
+    query_parts = [f"""
+    SELECT
+        t.category,
+        t.subcategory,
+        t.sub_subcategory,
+        dsc.content AS chunk_text,
+        t.chunk_level_reasoning AS reasoning,
+        ud.document_id,
+        ud.database,
+        ds.heading_title,
+        ud.date,
+        ud.author
+    FROM taxonomy t
+    JOIN document_section_chunk dsc ON t.chunk_id = dsc.id
+    JOIN document_section ds ON dsc.document_section_id = ds.id
+    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+    WHERE 1=1
+    {search_condition}
+    """]
+    
+    # Add filters
+    if selected_lang is not None:
+        query_parts.append("AND ud.language = :lang")
+        params['lang'] = selected_lang
+        
+    if selected_db is not None:
+        query_parts.append("AND ud.database = :db")
+        params['db'] = selected_db
+        
+    # Add source type filter
+    source_type_condition = _build_source_type_condition(source_type)
+    if source_type_condition:
+        query_parts.append(source_type_condition)
+    
+    if date_range and len(date_range) == 2 and date_range[0] and date_range[1]:
+        query_parts.append("AND ud.date BETWEEN :start_date AND :end_date")
+        params['start_date'] = date_range[0]
+        params['end_date'] = date_range[1]
+    
+    # Add order and limit
+    query_parts.append(f"ORDER BY ud.date DESC LIMIT {limit}")
+    
+    query = " ".join(query_parts)
+    logging.debug(f"Search query: {query}")
+
+    try:
+        engine = get_engine()
+        with engine.connect() as conn:
+            # Set a reasonable statement timeout to prevent long-running queries
+            conn.execute(text("SET statement_timeout = '60000'"))  # 60 seconds
+            df = pd.read_sql(text(query), conn, params=params)
+        
+        end_time = time.time()
+        logging.info(f"Search text chunks fetched in {end_time - start_time:.2f} seconds. {len(df)} rows returned.")
+        return df
+    except Exception as e:
+        logging.error(f"Error fetching search text chunks: {e}")
+        return pd.DataFrame()
+
+
+def get_freshness_data(
+    start_date: datetime,
+    end_date: datetime,
+    filter_value: str
+) -> Dict[str, pd.DataFrame]:
+    """
+    Get data for freshness analysis based on date range and filter.
+    
+    Args:
+        start_date: Start date for analysis
+        end_date: End date for analysis
+        filter_value: Filter value for data selection
+        
+    Returns:
+        Dict[str, pd.DataFrame]: Dictionary with 'category' and 'subcategory' DataFrames
+    """
+    logging.info(f"Fetching freshness data for period {start_date} to {end_date}, filter: {filter_value}")
+    
+    # Calculate total days for normalization
+    total_days = (end_date - start_date).days
+    total_days = max(total_days, 1)  # Avoid division by zero
+    
+    # Build appropriate filter conditions
+    filter_condition = ""
+    params = {'start_date': start_date, 'end_date': end_date}
+    
+    if filter_value != 'all':
+        if filter_value == 'russian':
+            filter_condition = "AND ud.language = 'RU'"
+        elif filter_value == 'ukrainian':
+            filter_condition = "AND (ud.database LIKE '%ukraine%' OR ud.database LIKE '%kyiv%')"
+        elif filter_value == 'western':
+            filter_condition = "AND (ud.language = 'EN' AND ud.database NOT LIKE '%russia%')"
+        elif filter_value == 'military':
+            filter_condition = "AND (ud.database LIKE '%military%' OR ud.database LIKE '%mil%')"
+        elif filter_value == 'social_media':
+            filter_condition = "AND (ud.database LIKE 'telegram%' OR ud.database = 'twitter' OR ud.database = 'vk')"
+    
+    # Query for categories - focus on just getting basic data
+    query = f"""
+    SELECT 
+        t.category,
+        COUNT(*) as count,
+        MAX(ud.date) as latest_date
+    FROM taxonomy t
+    JOIN document_section_chunk dsc ON t.chunk_id = dsc.id
+    JOIN document_section ds ON dsc.document_section_id = ds.id
+    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+    WHERE ud.date BETWEEN :start_date AND :end_date
+    {filter_condition}
+    GROUP BY t.category
+    ORDER BY latest_date DESC, count DESC
+    """
+    
+    try:
+        engine = get_engine()
+        with engine.connect() as conn:
+            # Fetch category data
+            df_category = pd.read_sql(text(query), conn, params=params)
+            
+            # Convert latest_date to datetime if it's not already
+            if 'latest_date' in df_category.columns and not df_category.empty:
+                df_category['latest_date'] = pd.to_datetime(df_category['latest_date'])
+            
+            # Calculate average age based on end_date and latest_date
+            if not df_category.empty and 'latest_date' in df_category.columns:
+                end_date_normalized = pd.to_datetime(end_date)
+                df_category['avg_age_days'] = (end_date_normalized - df_category['latest_date']).dt.days
+            else:
+                df_category['avg_age_days'] = 0
+            
+            # Similar query for subcategories
+            query_subcategory = f"""
+            SELECT 
+                t.category,
+                t.subcategory,
+                COUNT(*) as count,
+                MAX(ud.date) as latest_date
+            FROM taxonomy t
+            JOIN document_section_chunk dsc ON t.chunk_id = dsc.id
+            JOIN document_section ds ON dsc.document_section_id = ds.id
+            JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+            WHERE ud.date BETWEEN :start_date AND :end_date
+            {filter_condition}
+            GROUP BY t.category, t.subcategory
+            ORDER BY latest_date DESC, count DESC
+            """
+            
+            df_subcategory = pd.read_sql(text(query_subcategory), conn, params=params)
+            
+            # Convert latest_date to datetime
+            if 'latest_date' in df_subcategory.columns and not df_subcategory.empty:
+                df_subcategory['latest_date'] = pd.to_datetime(df_subcategory['latest_date'])
+            
+            # Calculate average age for subcategories
+            if not df_subcategory.empty and 'latest_date' in df_subcategory.columns:
+                df_subcategory['avg_age_days'] = (end_date_normalized - df_subcategory['latest_date']).dt.days
+            else:
+                df_subcategory['avg_age_days'] = 0
+            
+            # Calculate freshness scores
+            # For categories
+            max_count = df_category['count'].max() if not df_category.empty else 1
+            max_count = max(max_count, 1)  # Avoid division by zero
+            
+            df_category['recency_score'] = (1 - df_category['avg_age_days'] / total_days) * 70
+            df_category['frequency_score'] = (df_category['count'] / max_count) * 30
+            df_category['freshness_score'] = df_category['recency_score'] + df_category['frequency_score']
+            
+            # For subcategories
+            max_count_sub = df_subcategory['count'].max() if not df_subcategory.empty else 1
+            max_count_sub = max(max_count_sub, 1)  # Avoid division by zero
+            
+            df_subcategory['recency_score'] = (1 - df_subcategory['avg_age_days'] / total_days) * 70
+            df_subcategory['frequency_score'] = (df_subcategory['count'] / max_count_sub) * 30
+            df_subcategory['freshness_score'] = df_subcategory['recency_score'] + df_subcategory['frequency_score']
+            
+            # Sort by freshness score
+            df_category = df_category.sort_values('freshness_score', ascending=False)
+            df_subcategory = df_subcategory.sort_values('freshness_score', ascending=False)
+            
+            logging.info(f"Freshness data fetched: {len(df_category)} categories, {len(df_subcategory)} subcategories")
+            
+            return {
+                'category': df_category,
+                'subcategory': df_subcategory
+            }
+            
+    except Exception as e:
+        logging.error(f"Error fetching freshness data: {e}")
+        return {
+            'category': pd.DataFrame(),
+            'subcategory': pd.DataFrame()
+        }
