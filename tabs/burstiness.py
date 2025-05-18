@@ -4,7 +4,8 @@
 """
 Burstiness tab layout and callbacks for the dashboard.
 This tab provides analysis of bursts in taxonomic elements, keywords, and named entities,
-using Kleinberg's burst detection algorithm to identify significant spikes in frequency.
+using Kleinberg's burst detection algorithm to identify significant spikes in frequency,
+visualized in a CiteSpace-inspired style.
 """
 
 import logging
@@ -18,6 +19,7 @@ from dash import html, dcc, callback_context
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
+import plotly.express as px
 
 import sys
 import os
@@ -36,9 +38,12 @@ from visualizations.bursts import (
     create_burst_heatmap,
     create_burst_summary_chart,
     create_burst_timeline,
-    create_burst_comparison_chart
+    create_burst_comparison_chart,
+    create_citespace_timeline
 )
 
+# Theme colors for consistency
+THEME_BLUE = "#13376f"  # Main dashboard theme color
 
 # Named entity types for filtering
 NAMED_ENTITY_TYPES = [
@@ -99,7 +104,7 @@ def create_burstiness_tab_layout():
         
         # Filter Controls
         dbc.Card([
-            dbc.CardHeader("Burstiness Analysis Controls"),
+            dbc.CardHeader("Burstiness Analysis Controls", style={"background-color": THEME_BLUE, "color": "white"}),
             dbc.CardBody([
                 dbc.Row([
                     # Time period selection
@@ -285,7 +290,9 @@ def create_burstiness_tab_layout():
                 dbc.Row([
                     dbc.Col([
                         html.Br(),
-                        dbc.Button('Run Burstiness Analysis', id='burstiness-button', color="danger", size="lg"),
+                        dbc.Button('Run Burstiness Analysis', id='burstiness-button', 
+                                  color="danger", size="lg",
+                                  style={"background-color": THEME_BLUE, "border": "none"}),
                     ], width=12, style={"text-align": "center"})
                 ], className="mt-3")
             ])
@@ -295,6 +302,7 @@ def create_burstiness_tab_layout():
         dcc.Loading(
             id="loading-burstiness-results",
             type="circle",
+            color=THEME_BLUE,
             children=[
                 # Results section (initially hidden)
                 html.Div([
@@ -302,176 +310,229 @@ def create_burstiness_tab_layout():
                         # Overview tab with comparison across data types
                         dbc.Tab([
                             html.Div([
-                                html.H4("Top Bursting Elements Comparison", className="mt-3"),
-                                html.P("This chart shows the elements with the highest burst intensity for each data type."),
-                                dcc.Graph(id='burstiness-comparison-chart', style={'height': '500px'}),
+                                dbc.Row([
+                                    dbc.Col([
+                                        html.H4("Top Bursting Elements Comparison", className="mt-3"),
+                                        html.P("This chart shows the elements with the highest burst intensity for each data type."),
+                                        dcc.Loading(
+                                            id="loading-comparison-chart",
+                                            type="circle",
+                                            color=THEME_BLUE,
+                                            children=[dcc.Graph(id='burstiness-comparison-chart', style={'height': '500px'})]
+                                        ),
+                                    ], width=12),
+                                ]),
                                 
-                                html.Hr(),
+                                dbc.Row([
+                                    dbc.Col([
+                                        html.H4("CiteSpace-Style Burst Timeline", className="mt-3"),
+                                        html.P("This visualization shows bursts as horizontal segments with varying thickness based on intensity, similar to CiteSpace."),
+                                        dcc.Loading(
+                                            id="loading-citespace-timeline",
+                                            type="circle",
+                                            color=THEME_BLUE,
+                                            children=[dcc.Graph(id='burstiness-citespace-timeline', style={'height': '600px'})]
+                                        )
+                                    ], width=12),
+                                ]),
                                 
-                                html.H4("Burst Intensity Timeline", className="mt-4"),
-                                html.P("This chart shows how burst intensity changes over time periods for top elements."),
-                                dcc.Graph(id='burstiness-overview-timeline', style={'height': '500px'}),
-                            ])
-                        ], label="Overview"),
+                                dbc.Row([
+                                    dbc.Col([
+                                        html.H4("Top Elements Burst Timeline", className="mt-3"),
+                                        html.P("This timeline shows how the top elements from each data type change in burst intensity over time."),
+                                        dcc.Loading(
+                                            id="loading-overview-timeline",
+                                            type="circle",
+                                            color=THEME_BLUE,
+                                            children=[dcc.Graph(id='burstiness-overview-timeline', style={'height': '500px'})]
+                                        )
+                                    ], width=12),
+                                ]),
+                            ], className="p-4")
+                        ], label="Overview", tab_id="overview"),
                         
                         # Taxonomy tab
                         dbc.Tab([
                             html.Div([
-                                html.H4("Taxonomy Element Bursts", className="mt-3"),
-                                html.P("This heatmap shows burst intensity for taxonomic elements across time periods."),
-                                dcc.Graph(id='taxonomy-burst-chart', style={'height': '600px'}),
-                                
-                                html.Hr(),
-                                
-                                html.H4("Taxonomy Burst Timeline", className="mt-4"),
-                                html.P("This chart shows how burst intensity changes over time for top taxonomy elements."),
-                                dcc.Graph(id='taxonomy-burst-timeline', style={'height': '500px'}),
-                            ])
-                        ], label="Taxonomy Elements", id="burstiness-taxonomy-tab"),
+                                dbc.Row([
+                                    dbc.Col([
+                                        html.H4("Taxonomy Elements Burst Analysis", className="mt-3"),
+                                        html.P("This chart shows the taxonomy elements with the highest burst intensity."),
+                                        dcc.Loading(
+                                            id="loading-taxonomy-chart",
+                                            type="circle",
+                                            color=THEME_BLUE,
+                                            children=[dcc.Graph(id='taxonomy-burst-chart', style={'height': '600px'})]
+                                        )
+                                    ], width=12),
+                                ]),
+                                dbc.Row([
+                                    dbc.Col([
+                                        html.H4("Taxonomy Elements Burst Timeline", className="mt-3"),
+                                        html.P("This timeline shows how the burst intensity of top taxonomy elements changes over time."),
+                                        dcc.Loading(
+                                            id="loading-taxonomy-timeline",
+                                            type="circle",
+                                            color=THEME_BLUE,
+                                            children=[dcc.Graph(id='taxonomy-burst-timeline', style={'height': '500px'})]
+                                        )
+                                    ], width=12),
+                                ]),
+                            ], className="p-4")
+                        ], label="Taxonomy Elements", tab_id="taxonomy"),
                         
                         # Keywords tab
                         dbc.Tab([
                             html.Div([
-                                html.H4("Keyword Bursts", className="mt-3"),
-                                html.P("This heatmap shows burst intensity for keywords across time periods."),
-                                dcc.Graph(id='keyword-burst-chart', style={'height': '600px'}),
-                                
-                                html.Hr(),
-                                
-                                html.H4("Keyword Burst Timeline", className="mt-4"),
-                                html.P("This chart shows how burst intensity changes over time for top keywords."),
-                                dcc.Graph(id='keyword-burst-timeline', style={'height': '500px'}),
-                            ])
-                        ], label="Keywords", id="burstiness-keywords-tab"),
+                                dbc.Row([
+                                    dbc.Col([
+                                        html.H4("Keywords Burst Analysis", className="mt-3"), 
+                                        html.P("This chart shows the keywords with the highest burst intensity."),
+                                        dcc.Loading(
+                                            id="loading-keyword-chart",
+                                            type="circle",
+                                            color=THEME_BLUE,
+                                            children=[dcc.Graph(id='keyword-burst-chart', style={'height': '600px'})]
+                                        )
+                                    ], width=12),
+                                ]),
+                                dbc.Row([
+                                    dbc.Col([
+                                        html.H4("Keywords Burst Timeline", className="mt-3"),
+                                        html.P("This timeline shows how the burst intensity of top keywords changes over time."),
+                                        dcc.Loading(
+                                            id="loading-keyword-timeline",
+                                            type="circle",
+                                            color=THEME_BLUE,
+                                            children=[dcc.Graph(id='keyword-burst-timeline', style={'height': '500px'})]
+                                        )
+                                    ], width=12),
+                                ]),
+                            ], className="p-4")
+                        ], label="Keywords", tab_id="keywords"),
                         
                         # Named Entities tab
                         dbc.Tab([
                             html.Div([
-                                html.H4("Named Entity Bursts", className="mt-3"),
-                                html.P("This heatmap shows burst intensity for named entities across time periods."),
-                                dcc.Graph(id='entity-burst-chart', style={'height': '600px'}),
-                                
-                                html.Hr(),
-                                
-                                html.H4("Entity Burst Timeline", className="mt-4"),
-                                html.P("This chart shows how burst intensity changes over time for top named entities."),
-                                dcc.Graph(id='entity-burst-timeline', style={'height': '500px'}),
-                            ])
-                        ], label="Named Entities", id="burstiness-entities-tab"),
+                                dbc.Row([
+                                    dbc.Col([
+                                        html.H4("Named Entities Burst Analysis", className="mt-3"),
+                                        html.P("This chart shows the named entities with the highest burst intensity."),
+                                        dcc.Loading(
+                                            id="loading-entity-chart",
+                                            type="circle",
+                                            color=THEME_BLUE,
+                                            children=[dcc.Graph(id='entity-burst-chart', style={'height': '600px'})]
+                                        )
+                                    ], width=12),
+                                ]),
+                                dbc.Row([
+                                    dbc.Col([
+                                        html.H4("Named Entities Burst Timeline", className="mt-3"),
+                                        html.P("This timeline shows how the burst intensity of top named entities changes over time."),
+                                        dcc.Loading(
+                                            id="loading-entity-timeline",
+                                            type="circle",
+                                            color=THEME_BLUE,
+                                            children=[dcc.Graph(id='entity-burst-timeline', style={'height': '500px'})]
+                                        )
+                                    ], width=12),
+                                ]),
+                            ], className="p-4")
+                        ], label="Named Entities", tab_id="entities")
                     ], id="burstiness-tabs")
                 ], id="burstiness-results", style={"display": "none"})
             ]
         ),
         
-        # Explanation card
-        dbc.Card([
-            dbc.CardHeader("About Burst Detection"),
-            dbc.CardBody([
-                html.P([
-                    "Burst detection identifies sudden and significant increases in the frequency of terms or concepts. ",
-                    "It helps identify emerging trends, hot topics, and time-sensitive information."
-                ]),
-                html.P([
-                    "This dashboard uses Kleinberg's burst detection algorithm, which identifies when a term's frequency ",
-                    "suddenly increases above its baseline level."
-                ]),
-                html.Hr(),
-                html.H5("How to interpret the results:"),
-                dbc.Row([
-                    dbc.Col([
-                        html.Ul([
-                            html.Li(html.Strong("Burst Intensity"), className="mt-2"),
-                            html.Ul([
-                                html.Li("High (Red): Significant and sudden increases"),
-                                html.Li("Moderate (Orange/Yellow): Notable but less dramatic increases"),
-                                html.Li("Low/None (Light): Steady levels without significant spikes")
-                            ], style={"list-style-type": "disc"})
-                        ], style={"list-style-type": "none", "padding-left": "0"})
-                    ], width=6),
-                    dbc.Col([
-                        html.Ul([
-                            html.Li(html.Strong("Comparative Analysis"), className="mt-2"),
-                            html.Ul([
-                                html.Li("Compare bursts across data types"),
-                                html.Li("Look for correlations between concepts, entities, and keywords"),
-                                html.Li("Examine patterns over different time horizons")
-                            ], style={"list-style-type": "disc"})
-                        ], style={"list-style-type": "none", "padding-left": "0"})
-                    ], width=6)
-                ])
-            ])
-        ], className="mt-4"),
-        
-        # Burstiness-specific About modal
+        # About modal for Burstiness
         dbc.Modal([
-            dbc.ModalHeader(dbc.ModalTitle("Using the Burstiness Analysis Tab"), 
-                           style={"background-color": "#13376f", "color": "white"}),
+            dbc.ModalHeader(dbc.ModalTitle("Using the Burstiness Tab"), 
+                           style={"background-color": THEME_BLUE, "color": "white"}),
             dbc.ModalBody([
                 html.P([
-                    "The Burstiness tab helps you identify sudden increases in discussion of specific topics, keywords, and entities ",
-                    "in the corpus, using Kleinberg's burst detection algorithm to find significant spikes in frequency."
+                    "The Burstiness tab helps you identify which topics, keywords, or entities are experiencing significant spikes in frequency over time. ",
+                    "This is useful for identifying emerging trends, sudden events, or shifts in focus within the Russian-Ukrainian War discourse."
                 ]),
                 
-                html.H5("How to Use This Tab:", style={"margin-top": "20px", "color": "#13376f"}),
+                html.H5("About Burst Detection:", style={"margin-top": "20px", "color": THEME_BLUE}),
+                html.P([
+                    "Burst detection identifies significant spikes in the frequency of taxonomic elements, keywords, or named entities over time. ",
+                    "Using Kleinberg's burst detection algorithm, we can identify when certain topics or entities suddenly gain prominence in the discourse."
+                ]),
+                html.P([
+                    "A high burst intensity (score) indicates that an element has seen a significant increase in mentions during a specific time period, ",
+                    "compared to its typical baseline frequency. This helps identify emerging or trending topics."
+                ]),
+                html.P([
+                    "The analysis is performed across the selected time periods (weeks, months, or quarters), allowing you to see both ",
+                    "short-term spikes and longer-term trends in the data."
+                ]),
+                
+                html.H5("How to Use This Tab:", style={"margin-top": "20px", "color": THEME_BLUE}),
                 html.Ol([
                     html.Li([
                         html.Strong("Select Time Period:"), 
-                        " Choose whether to analyze data over the last 10 weeks, months, or quarters."
+                        " Choose whether to analyze burstiness over the last 10 weeks, months, or quarters."
                     ]),
                     html.Li([
                         html.Strong("Configure Filters:"), 
-                        " Use standard filters (language, database, source type, date range, source filter) ",
-                        "to focus on a specific subset of the data."
-                    ]),
-                    html.Li([
-                        html.Strong("Select Data Types:"),
-                        " Choose which types of data to analyze (taxonomic elements, keywords, named entities) ",
-                        "and configure options for each type."
+                        " Use the Standard Filters and Data Type Filters to refine your analysis."
                     ]),
                     html.Li([
                         html.Strong("Run Analysis:"), 
                         " Click the 'Run Burstiness Analysis' button to generate visualizations."
                     ]),
                     html.Li([
-                        html.Strong("Explore Results:"), 
-                        " Navigate through the various tabs to see different aspects of burst analysis."
+                        html.Strong("Explore Visualizations:"), 
+                        " Switch between the different tabs to examine bursts from various perspectives."
                     ]),
                 ]),
                 
-                html.H5("Understanding Burst Detection:", style={"margin-top": "20px", "color": "#13376f"}),
-                html.P([
-                    "Burst detection helps identify when certain terms or concepts suddenly appear more frequently than expected. ",
-                    "This can indicate emerging topics, shifts in discourse, or responses to external events."
-                ]),
-                
-                html.H5("Interpreting the Visualizations:", style={"margin-top": "20px", "color": "#13376f"}),
+                html.H5("Understanding the Visualizations:", style={"margin-top": "20px", "color": THEME_BLUE}),
                 html.Ul([
                     html.Li([
-                        html.Strong("Overview:"), 
-                        " Compare the top bursting elements across all data types and see how burst intensity changes over time."
+                        html.Strong("CiteSpace-Style Timeline:"), 
+                        " Shows bursts as horizontal bars where the thickness indicates intensity, similar to CiteSpace's citation burst diagrams."
                     ]),
                     html.Li([
-                        html.Strong("Taxonomy Elements:"), 
-                        " Explore bursts in taxonomic categories at your selected level of detail."
+                        html.Strong("Comparison Chart:"), 
+                        " Bar chart comparing the highest bursting elements across different data types."
                     ]),
                     html.Li([
-                        html.Strong("Keywords:"), 
-                        " Identify specific terms that suddenly spike in usage."
+                        html.Strong("Burst Timeline:"), 
+                        " Line chart showing how burst intensity changes over time for top elements."
                     ]),
                     html.Li([
-                        html.Strong("Named Entities:"), 
-                        " Track bursts in mentions of specific people, organizations, locations, and more."
+                        html.Strong("Data Type Tabs:"), 
+                        " Dedicated visualizations for taxonomy elements, keywords, and named entities."
+                    ]),
+                ]),
+                
+                html.H5("Interpreting the Results:", style={"margin-top": "20px", "color": THEME_BLUE}),
+                html.Ul([
+                    html.Li([
+                        html.Strong("High Burst Intensity:"), 
+                        " Indicates a significant spike in mentions compared to baseline."
+                    ]),
+                    html.Li([
+                        html.Strong("Sustained Bursts:"), 
+                        " When an element maintains high burst intensity across multiple periods, it suggests a sustained focus or ongoing event."
+                    ]),
+                    html.Li([
+                        html.Strong("Patterns Across Data Types:"), 
+                        " Look for related bursts across taxonomy elements, keywords, and named entities to identify comprehensive trends."
                     ]),
                 ]),
                 
                 html.P([
                     html.Strong("Tip:"), 
-                    " Look for correlations between bursts across different data types—for instance, when a named entity bursts at the same time as related keywords or taxonomic elements."
+                    " Compare bursts across different time periods (weeks vs. months vs. quarters) to distinguish between short-term events and longer-term trends."
                 ], style={"margin-top": "15px", "font-style": "italic"})
             ]),
             dbc.ModalFooter(
                 dbc.Button("Close", id="close-burstiness-about", className="ms-auto", 
-                          style={"background-color": "#13376f", "border": "none"})
+                          style={"background-color": THEME_BLUE, "border": "none"})
             ),
         ], id="burstiness-about-modal", size="lg", is_open=False)
     ], style={'max-width': '1200px', 'margin': 'auto'})
@@ -553,9 +614,9 @@ def register_burstiness_callbacks(app):
     # Callback to show/hide tabs based on data type selection
     @app.callback(
         [
-            Output("burstiness-taxonomy-tab", "disabled"),
-            Output("burstiness-keywords-tab", "disabled"),
-            Output("burstiness-entities-tab", "disabled")
+            Output("taxonomy", "disabled"),
+            Output("keywords", "disabled"),
+            Output("entities", "disabled")
         ],
         [
             Input("burstiness-include-taxonomy", "value"),
@@ -577,6 +638,7 @@ def register_burstiness_callbacks(app):
             
             # Update visualizations
             Output('burstiness-comparison-chart', 'figure'),
+            Output('burstiness-citespace-timeline', 'figure'),  # New CiteSpace timeline
             Output('burstiness-overview-timeline', 'figure'),
             Output('taxonomy-burst-chart', 'figure'),
             Output('taxonomy-burst-timeline', 'figure'),
@@ -638,7 +700,7 @@ def register_burstiness_callbacks(app):
         if not n_clicks:
             # Initial state - return empty visualizations
             empty_fig = go.Figure().update_layout(title="No data to display yet")
-            return {'display': 'none'}, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig
+            return {'display': 'none'}, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig
         
         logging.info(f"Running burstiness analysis with period={period}, filter={filter_value}")
         
@@ -665,7 +727,7 @@ def register_burstiness_callbacks(app):
                     font=dict(size=16)
                 )]
             )
-            return {'display': 'block'}, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig
+            return {'display': 'block'}, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig
         
         # Build filter settings
         filter_settings = {
@@ -702,6 +764,40 @@ def register_burstiness_callbacks(app):
             entity_summary,
             title=f"Top Bursting Elements (Last 10 {period}s)"
         )
+        
+        # Create CiteSpace-style timeline visualization
+        citespace_timeline_data = []
+        # Combine data from all types for the CiteSpace visualization
+        for data_type, elements in burst_data.items():
+            prefix = ""
+            if data_type == 'taxonomy':
+                prefix = "T: "
+            elif data_type == 'keywords':
+                prefix = "K: "
+            else:
+                prefix = "E: "
+                
+            for element, df in elements.items():
+                if not df.empty and 'period' in df.columns and 'burst_intensity' in df.columns:
+                    for _, row in df.iterrows():
+                        citespace_timeline_data.append({
+                            'element': prefix + element,
+                            'period': row['period'],
+                            'burst_intensity': row['burst_intensity']
+                        })
+        
+        # Create DataFrame for CiteSpace timeline
+        if citespace_timeline_data:
+            citespace_df = pd.DataFrame(citespace_timeline_data)
+            citespace_timeline_fig = create_citespace_timeline(
+                citespace_df,
+                title=f"CiteSpace-Style Burst Timeline (Last 10 {period}s)",
+                color_scale=px.colors.sequential.Reds
+            )
+        else:
+            citespace_timeline_fig = go.Figure().update_layout(
+                title="No data available for CiteSpace timeline"
+            )
         
         # Create overview timeline
         # Combine top elements from all data types
@@ -776,7 +872,9 @@ def register_burstiness_callbacks(app):
                     xanchor="center",
                     x=0.5
                 ),
-                hovermode="closest"
+                hovermode="closest",
+                plot_bgcolor='rgb(248, 248, 248)',
+                paper_bgcolor='white',
             )
         else:
             overview_timeline_fig = go.Figure().update_layout(
@@ -807,7 +905,8 @@ def register_burstiness_callbacks(app):
             
             taxonomy_timeline_fig = create_burst_timeline(
                 burst_data['taxonomy'],
-                title=f"Top Taxonomy {taxonomy_level.title()} Burst Timeline"
+                title=f"Top Taxonomy {taxonomy_level.title()} Burst Timeline",
+                color_base='#4caf50'
             )
         else:
             no_data_message = "Taxonomy elements not selected" if 'taxonomy' not in data_types else "No taxonomy burst data available"
@@ -839,7 +938,8 @@ def register_burstiness_callbacks(app):
             
             keyword_timeline_fig = create_burst_timeline(
                 burst_data['keywords'],
-                title="Top Keywords Burst Timeline"
+                title="Top Keywords Burst Timeline",
+                color_base='#2196f3'
             )
         else:
             no_data_message = "Keywords not selected" if 'keywords' not in data_types else "No keyword burst data available"
@@ -871,7 +971,8 @@ def register_burstiness_callbacks(app):
             
             entity_timeline_fig = create_burst_timeline(
                 burst_data['named_entities'],
-                title="Top Named Entities Burst Timeline"
+                title="Top Named Entities Burst Timeline",
+                color_base='#ff9800'
             )
         else:
             no_data_message = "Named entities not selected" if 'named_entities' not in data_types else "No named entity burst data available"
@@ -879,4 +980,4 @@ def register_burstiness_callbacks(app):
             entity_burst_fig = empty_fig
             entity_timeline_fig = empty_fig
         
-        return {'display': 'block'}, comparison_fig, overview_timeline_fig, taxonomy_burst_fig, taxonomy_timeline_fig, keyword_burst_fig, keyword_timeline_fig, entity_burst_fig, entity_timeline_fig
+        return {'display': 'block'}, comparison_fig, citespace_timeline_fig, overview_timeline_fig, taxonomy_burst_fig, taxonomy_timeline_fig, keyword_burst_fig, keyword_timeline_fig, entity_burst_fig, entity_timeline_fig
