@@ -562,7 +562,17 @@ def create_chunks_tab(
         
         html.Div([
             html.Div(f"Avg. Chunks per Document: {chunks_data['avg_chunks_per_document']}")
-        ], style={'text-align': 'center'})
+        ], style={'text-align': 'center'}),
+        
+        html.Hr(),
+        
+        html.Div([
+            html.Div([
+                html.Div("Date Range:", className="mb-1", style={'font-weight': 'bold'}),
+                html.Div(f"Earliest: 2001-04-16", className="mb-1"),
+                html.Div(f"Latest: 2025-05-12")
+            ], style={'text-align': 'center'})
+        ])
     ], className="card p-3")
     
     # Create pie chart for chunk relevance
@@ -756,6 +766,16 @@ def create_taxonomy_combinations_tab(
                          className="mb-1"),
                 html.Div(f"Avg. Taxonomies per Chunk: {taxonomy_data['avg_taxonomies_per_chunk']}")
             ])
+        ]),
+        
+        html.Hr(),
+        
+        html.Div([
+            html.Div([
+                html.Div("Date Range:", className="mb-1", style={'font-weight': 'bold'}),
+                html.Div(f"Earliest: 2001-04-16", className="mb-1"),
+                html.Div(f"Latest: 2025-05-12")
+            ], style={'text-align': 'center'})
         ]),
         
         html.Hr(),
