@@ -100,6 +100,12 @@ FRESHNESS_PERIOD_OPTIONS = [
     {'label': 'Last Quarter', 'value': 'quarter'}
 ]
 
+FRESHNESS_DATATYPE_OPTIONS = [
+    {'label': 'Taxonomy Elements', 'value': 'taxonomy'},
+    {'label': 'Keywords', 'value': 'keywords'},
+    {'label': 'Named Entities', 'value': 'named_entities'}
+]
+
 FRESHNESS_FILTER_OPTIONS = [
     {'label': 'All Sources', 'value': 'all'},
     {'label': 'Russian Sources', 'value': 'russian'},

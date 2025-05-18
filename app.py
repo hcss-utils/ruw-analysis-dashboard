@@ -32,6 +32,7 @@ from tabs.explore import create_explore_tab_layout, register_explore_callbacks
 from tabs.search import create_search_tab_layout, register_search_callbacks
 from tabs.compare import create_compare_tab_layout, register_compare_callbacks
 from tabs.freshness import create_freshness_tab_layout, register_freshness_callbacks
+from tabs.burstiness import create_burstiness_tab_layout, register_burstiness_callbacks
 from components.layout import create_header, create_about_modal
 from utils.cache import clear_cache
 
@@ -129,6 +130,7 @@ def create_dash_app() -> dash.Dash:
     search_tab = create_search_tab_layout(db_options, min_date, max_date)
     compare_tab = create_compare_tab_layout(db_options, min_date, max_date)
     freshness_tab = create_freshness_tab_layout()
+    burstiness_tab = create_burstiness_tab_layout()
     
     # Try to import the sources tab, but use a placeholder if it fails
     try:
@@ -364,6 +366,7 @@ def create_dash_app() -> dash.Dash:
             dcc.Tab(label="Search", children=search_tab, className="custom-tab"),
             dcc.Tab(label="Compare", children=compare_tab, className="custom-tab"),
             dcc.Tab(label="Freshness", children=freshness_tab, className="custom-tab"),
+            dcc.Tab(label="Burstiness", children=burstiness_tab, className="custom-tab"),
             dcc.Tab(label="Sources", children=sources_tab, className="custom-tab"),
         ], className="slimmer-tabs"),
         # About modal
@@ -382,6 +385,7 @@ def create_dash_app() -> dash.Dash:
     register_search_callbacks(app)
     register_compare_callbacks(app)
     register_freshness_callbacks(app)
+    register_burstiness_callbacks(app)
     sources_callbacks(app)
     
     # Register about modal callback - MODIFIED: Now only main header About button triggers this
