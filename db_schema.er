@@ -1,0 +1,99 @@
+[alembic_version]
+    version_num character varying PK
+
+[classifications]
+    id integer PK
+    chunk_id integer
+    chat_id character varying
+    model character varying
+    created_at timestamp without time zone
+    done_reason character varying
+    total_duration bigint
+    usage_prompt_tokens integer
+    usage_completion_tokens integer
+    usage_tokens integer
+    request text
+    raw_response text
+    response text
+
+[document_section]
+    id integer PK
+    uploaded_document_id integer
+    parent_document_section_id integer
+    heading_title text
+    heading_depth integer
+    content text
+    sequence_number integer
+    path USER-DEFINED
+
+[document_section_chunk]
+    id integer PK
+    document_section_id integer
+    chunk_index integer
+    content text
+    embedding USER-DEFINED
+    embedding_model text
+    named_entities jsonb
+    keywords ARRAY
+
+[logs]
+    id integer PK
+    document_id text
+    database character varying
+    stage character varying
+    model character varying
+    created_at timestamp without time zone
+    done boolean
+    done_reason character varying
+    total_duration bigint
+    load_duration bigint
+    prompt_eval_count integer
+    prompt_eval_duration bigint
+    eval_count integer
+    eval_duration bigint
+    raw_response text
+    response text
+
+[taxonomy]
+    id integer PK
+    classification_id integer
+    chunk_id integer
+    category character varying
+    subcategory character varying
+    sub_subcategory character varying
+    taxonomy_reasoning text
+    chunk_level_reasoning text
+
+[taxonomy_clusters_kmeans]
+    id integer PK
+    taxonomic_element character varying
+    cluster_id character varying
+    cluster_label character varying
+    span_ids ARRAY
+    summary json
+
+[taxonomy_granular]
+    id integer PK
+    chunk_te_id integer
+    text_span text
+    justification text
+    embedding USER-DEFINED
+
+[uploaded_document]
+    id integer PK
+    document_id character varying
+    database character varying
+    date date
+    author character varying
+    language character varying
+    is_full_text_present boolean
+    text text
+    text_en text
+
+classifications *--1 document_section_chunk
+document_section *--1 document_section
+document_section *--1 uploaded_document
+document_section_chunk *--1 document_section
+taxonomy *--1 document_section_chunk
+taxonomy *--1 classifications
+taxonomy_granular *--1 taxonomy
