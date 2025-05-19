@@ -18,6 +18,24 @@ Visualization module for the Russian-Ukrainian War Data Analysis Dashboard.
 Contains functions for creating different types of data visualizations.
 """
 
+from visualizations.timeline import create_timeline_visualization
+from visualizations.comparison import create_comparison_visualization 
+from visualizations.freshness import create_freshness_visualization
+from visualizations.sunburst import create_sunburst_visualization
+from visualizations.bursts import (
+    create_burst_heatmap, 
+    create_burst_summary_chart, 
+    create_burst_timeline, 
+    create_co_occurrence_network as create_basic_co_occurrence_network,
+    create_enhanced_citespace_timeline
+)
+from visualizations.co_occurrence import (
+    create_co_occurrence_network,
+    create_enhanced_co_occurrence_network,
+    create_temporal_co_occurrence_network,
+    fetch_concordance_data
+)
+
 # components/__init__.py
 """
 UI components for the Russian-Ukrainian War Data Analysis Dashboard.
