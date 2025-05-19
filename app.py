@@ -91,9 +91,6 @@ def create_dash_app() -> dash.Dash:
     app.scripts.config.serve_locally = True
     app.css.config.serve_locally = True
     
-    # Expose server variable for Gunicorn
-    server = app.server
-    
     # Add Basic Authentication
     # Comment this out during development
     # auth = dash_auth.BasicAuth(app, VALID_USERNAME_PASSWORD_PAIRS)
@@ -419,24 +416,19 @@ def create_dash_app() -> dash.Dash:
     return app
 
 
+# Create app at module level for Gunicorn
+app = create_dash_app()
+# Expose server for Gunicorn
+server = app.server
+
 def main():
     """
-    Main entry point for the application.
+    Main entry point for the application when run directly.
     """
     try:
-        # Create the app
-        app = create_dash_app()
-        
-        # Get the server for deployment
-        server = app.server
-        
-        # Run the server if called directly
-        if __name__ == "__main__":
-            port = int(os.environ.get("PORT", 8051))
-            # Use app.run() instead of app.run_server()
-            app.run(debug=True, host='0.0.0.0', port=port)
-            
-        return app
+        port = int(os.environ.get("PORT", 8051))
+        # Use app.run() instead of app.run_server()
+        app.run(debug=True, host='0.0.0.0', port=port)
         
     except Exception as e:
         logging.error(f"Error starting application: {e}")
@@ -448,5 +440,4 @@ def main():
 
 
 if __name__ == "__main__":
-    # Fix: Call main() instead of trying to access 'app'
     main()
