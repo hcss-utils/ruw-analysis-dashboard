@@ -12,12 +12,18 @@ This module provides multiple implementations of burst detection algorithms:
 
 import numpy as np
 import pandas as pd
-import scipy.stats as stats
 from typing import List, Dict, Union, Tuple, Optional, Any, Set
 import logging
 from datetime import datetime, timedelta
 from itertools import combinations
 from collections import defaultdict
+
+# Try to import scipy components, but handle case if not available
+try:
+    import scipy.stats as stats
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
 
 ###########################################
 # Basic Kleinberg Burst Detection (2-state)
@@ -159,7 +165,25 @@ def kleinberg_multi_state_burst_detection(
             rate = base_rate if k == 0 else s_values[k] * base_rate
             count = time_series.iloc[t]['smoothed_count']
             # Using log probability for numerical stability
-            cost[t, k] = -stats.poisson.logpmf(count, rate)
+            if SCIPY_AVAILABLE:
+                cost[t, k] = -stats.poisson.logpmf(count, rate)
+            else:
+                # Simple approximation of Poisson log PMF without scipy
+                # log(e^(-λ) * λ^k / k!) = -λ + k*log(λ) - log(k!)
+                # For large counts, use Stirling's approximation for log(k!)
+                count_int = int(count)
+                if count_int > 20:
+                    # Stirling's approximation: log(n!) ≈ n*log(n) - n
+                    log_factorial = count_int * np.log(count_int) - count_int
+                else:
+                    try:
+                        log_factorial = np.log(np.math.factorial(count_int))
+                    except OverflowError:
+                        # Fallback to Stirling's approximation if factorial overflows
+                        log_factorial = count_int * np.log(count_int) - count_int
+                        
+                logpmf = -rate + count * np.log(rate) - log_factorial
+                cost[t, k] = -logpmf
     
     # State transition cost
     # Higher gamma = higher cost to transition between states
@@ -377,7 +401,19 @@ def validate_bursts_statistically(
         result_df['global_z_score'] = 0
     
     # Calculate confidence interval for global baseline
-    z_critical = stats.norm.ppf((1 + confidence_level) / 2)
+    if SCIPY_AVAILABLE:
+        z_critical = stats.norm.ppf((1 + confidence_level) / 2)
+    else:
+        # Simple approximation of z-values without scipy
+        if confidence_level >= 0.99:
+            z_critical = 2.58  # ~99% confidence
+        elif confidence_level >= 0.95:
+            z_critical = 1.96  # ~95% confidence
+        elif confidence_level >= 0.90:
+            z_critical = 1.65  # ~90% confidence
+        else:
+            z_critical = 1.28  # ~80% confidence
+    
     margin_of_error = z_critical * (global_std / np.sqrt(n))
     
     result_df['global_ci_lower'] = global_mean - margin_of_error
@@ -466,7 +502,27 @@ def validate_bursts_statistically(
     
     # Final burst probability based on confidence level and Z-score
     # Probability of observing a value at least this extreme
-    result_df['burst_probability'] = 1 - stats.norm.cdf(result_df['local_z_score'])
+    if SCIPY_AVAILABLE:
+        result_df['burst_probability'] = 1 - stats.norm.cdf(result_df['local_z_score'])
+    else:
+        # Simple approximation of normal CDF without scipy
+        # Using an approximation of the error function
+        def approx_norm_cdf(z):
+            neg = z < 0
+            z = abs(z)
+            # Approximation of error function
+            a1 = 0.254829592
+            a2 = -0.284496736
+            a3 = 1.421413741
+            a4 = -1.453152027
+            a5 = 1.061405429
+            p = 0.3275911
+            t = 1.0 / (1.0 + p * z)
+            erf = 1.0 - ((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * np.exp(-z * z)
+            cdf = 0.5 * (1 + erf)
+            return 1 - cdf if neg else cdf
+        
+        result_df['burst_probability'] = result_df['local_z_score'].apply(lambda z: 1 - approx_norm_cdf(z))
     
     # Calculate statistical significance (p-value < (1 - confidence_level))
     alpha = 1 - confidence_level
