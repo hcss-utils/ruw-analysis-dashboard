@@ -33,6 +33,8 @@ def create_connection_string() -> Optional[str]:
     Returns:
         Optional[str]: Database connection string or None if using demo mode
     """
+    global DEMO_MODE  # Declare at the beginning of the function
+    
     # Check if running on Heroku (with DATABASE_URL environment variable)
     database_url = os.environ.get('DATABASE_URL')
     
@@ -41,7 +43,6 @@ def create_connection_string() -> Optional[str]:
         # Check for placeholder values that indicate demo mode should be used
         if database_url in ['your_existing_database_url', 'placeholder', 'demo']:
             logging.info("Using demo mode with sample data (placeholder DATABASE_URL detected)")
-            global DEMO_MODE
             DEMO_MODE = True
             return None
             
@@ -54,7 +55,6 @@ def create_connection_string() -> Optional[str]:
                 database_url.startswith('sqlite://') or
                 re.match(r'postgresql(\+[a-zA-Z0-9]+)?://', database_url)):
             logging.warning(f"Invalid DATABASE_URL format, switching to demo mode: {database_url}")
-            global DEMO_MODE
             DEMO_MODE = True
             return None
             
@@ -74,7 +74,6 @@ def create_connection_string() -> Optional[str]:
     except Exception as e:
         logging.error(f"Error creating connection string from DB_CONFIG: {e}")
         logging.info("Falling back to demo mode with sample data")
-        global DEMO_MODE
         DEMO_MODE = True
         return None
 
@@ -87,10 +86,11 @@ def create_db_engine() -> Optional[Engine]:
     Returns:
         Optional[Engine]: SQLAlchemy engine object or None if using demo mode
     """
+    global DEMO_MODE  # Declare at the beginning of the function
+    
     connection_string = create_connection_string()
     
     # If already in demo mode or connection string is None, return None
-    global DEMO_MODE
     if DEMO_MODE or connection_string is None:
         DEMO_MODE = True
         logging.info("Using demo mode with sample data")
