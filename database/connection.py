@@ -22,16 +22,28 @@ from config import DB_CONFIG
 def create_connection_string() -> str:
     """
     Create a connection string for the database from configuration.
+    Supports both local configuration and Heroku DATABASE_URL.
     
     Returns:
         str: Database connection string
     """
+    # Check if running on Heroku (with DATABASE_URL environment variable)
+    database_url = os.environ.get('DATABASE_URL')
+    if database_url:
+        # Heroku PostgreSQL connection strings start with postgres://, but SQLAlchemy needs postgresql://
+        if database_url.startswith('postgres://'):
+            database_url = database_url.replace('postgres://', 'postgresql://', 1)
+        logging.info("Using DATABASE_URL from environment variables")
+        return database_url
+    
+    # Otherwise use local configuration
     user = DB_CONFIG['user']
     password = quote_plus(DB_CONFIG['password'])
     host = DB_CONFIG['host']
     port = DB_CONFIG['port']
     database = DB_CONFIG['database']
     
+    logging.info(f"Using local database configuration for {host}:{port}/{database}")
     return f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{database}"
 
 
