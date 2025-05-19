@@ -37,10 +37,10 @@ import os
 # Add the project root to the path to import modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database.data_fetchers_freshness import get_burst_data_for_periods, calculate_burst_summaries
-from database.data_fetchers import fetch_all_databases, fetch_date_range, get_documents_by_keywords
+from database.data_fetchers import fetch_all_databases, fetch_date_range
 from database.connection import get_engine
 from components.layout import create_filter_card
-from components.cards import create_collapsible_card
+# removed import create_collapsible_card
 from config import (
     LANGUAGE_OPTIONS,
     SOURCE_TYPE_OPTIONS,
@@ -60,10 +60,12 @@ from visualizations.bursts import (
     create_burst_comparison_chart,
     create_citespace_timeline,
     create_enhanced_citespace_timeline,
-    create_co_occurrence_network,
     create_predictive_visualization,
     load_historical_events,
     prepare_document_links
+)
+from visualizations.co_occurrence import (
+    create_co_occurrence_network
 )
 
 # Theme colors for consistency

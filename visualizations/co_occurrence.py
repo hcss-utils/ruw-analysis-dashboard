@@ -12,10 +12,16 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from typing import Dict, List, Optional, Any, Union, Tuple
-import networkx as nx
 import json
 from datetime import datetime
 from sqlalchemy import text
+
+# Try to import networkx, but handle case if not available
+try:
+    import networkx as nx
+    NETWORKX_AVAILABLE = True
+except ImportError:
+    NETWORKX_AVAILABLE = False
 
 # Add the project root to the path to import modules
 import sys
@@ -301,6 +307,15 @@ def create_co_occurrence_network(
             )]
         )
     
+    # Check if networkx is available
+    if not NETWORKX_AVAILABLE:
+        # Use the matrix fallback visualization if NetworkX is not available
+        return create_matrix_visualization_fallback(
+            network_data, 
+            title=f"{title} (Matrix View)", 
+            highlight_elements=highlight_elements
+        )
+    
     # Create network using NetworkX for layout
     G = nx.Graph()
     
@@ -513,6 +528,14 @@ def create_enhanced_co_occurrence_network(
                 x=0.5,
                 y=0.5
             )]
+        )
+    
+    # Check if networkx is available
+    if not NETWORKX_AVAILABLE:
+        # Use the matrix fallback visualization if NetworkX is not available
+        return create_matrix_visualization_fallback(
+            network_data, 
+            title=f"{title} (Matrix View)"
         )
     
     # Create network using NetworkX for layout and analysis
@@ -773,6 +796,16 @@ def create_temporal_co_occurrence_network(
     if not co_occurrences:
         return go.Figure().update_layout(title="No significant co-occurrences found")
     
+    # Check if networkx is available
+    if not NETWORKX_AVAILABLE:
+        # Use the matrix fallback visualization if NetworkX is not available
+        # Generate network graph structure
+        network_data = generate_co_occurrence_network(co_occurrences, min_strength=min_strength)
+        return create_matrix_visualization_fallback(
+            network_data, 
+            title=f"{title} (Matrix View)"
+        )
+    
     # Get all periods from the data
     all_periods = set()
     for data_type, elements in burst_data.items():
@@ -1027,5 +1060,189 @@ def create_temporal_co_occurrence_network(
                 y=0.5
             )]
         )
+    
+    return fig
+
+def create_matrix_visualization_fallback(
+    network_data: Dict[str, List[Dict[str, Any]]],
+    title: str = "Co-occurrence Matrix",
+    highlight_elements: Optional[List[str]] = None
+) -> go.Figure:
+    """
+    Fallback visualization for co-occurrence data when NetworkX is not available.
+    Creates a heatmap matrix visualization instead of a network graph.
+    
+    Args:
+        network_data: Dictionary with 'nodes' and 'edges' lists from generate_co_occurrence_network
+        title: Chart title
+        highlight_elements: Optional list of elements to highlight in the matrix
+        
+    Returns:
+        go.Figure: Plotly Figure object with heatmap matrix
+    """
+    # Extract nodes and edges from network data
+    nodes = network_data.get('nodes', [])
+    edges = network_data.get('edges', [])
+    
+    # If no nodes or edges, return empty chart
+    if not nodes or not edges:
+        return go.Figure().update_layout(title="No co-occurrence data available")
+    
+    # Create mapping of element IDs to indices for the matrix
+    node_ids = [node['id'] for node in nodes]
+    node_indices = {node_id: i for i, node_id in enumerate(node_ids)}
+    
+    # Create adjacency matrix
+    n_nodes = len(nodes)
+    adjacency_matrix = np.zeros((n_nodes, n_nodes))
+    
+    # Fill the matrix with edge weights
+    for edge in edges:
+        source = edge['source']
+        target = edge['target']
+        weight = edge['weight']
+        
+        i = node_indices[source]
+        j = node_indices[target]
+        
+        adjacency_matrix[i, j] = weight
+        adjacency_matrix[j, i] = weight  # Symmetric matrix
+    
+    # Create labels for the matrix
+    labels = [node['label'] for node in nodes]
+    
+    # Create node color map based on data type
+    node_colors = []
+    for node in nodes:
+        data_type = node['data_type']
+        if data_type.startswith('T') or data_type == 'taxonomy':
+            color = TAXONOMY_COLOR
+        elif data_type.startswith('K') or data_type == 'keywords':
+            color = KEYWORD_COLOR
+        else:
+            color = ENTITY_COLOR
+        node_colors.append(color)
+    
+    # Create heatmap
+    fig = go.Figure(data=go.Heatmap(
+        z=adjacency_matrix,
+        x=labels,
+        y=labels,
+        colorscale=[[0, 'white'], [1, 'darkred']],
+        hoverongaps=False,
+        colorbar=dict(
+            title='Co-occurrence<br>Strength',
+            titleside='top',
+            tickmode='array',
+            tickvals=[0, 0.25, 0.5, 0.75, 1],
+            ticktext=['0', '0.25', '0.5', '0.75', '1']
+        ),
+        hovertemplate='%{y} × %{x}<br>Strength: %{z:.2f}<extra></extra>'
+    ))
+    
+    # Add colored markers to indicate data type
+    for i, (label, color) in enumerate(zip(labels, node_colors)):
+        # Add colored marker before label on x-axis
+        fig.add_annotation(
+            x=i,
+            y=-0.8,
+            text='●',
+            showarrow=False,
+            font=dict(size=14, color=color),
+            xref='x',
+            yref='paper'
+        )
+        
+        # Add colored marker before label on y-axis
+        fig.add_annotation(
+            x=-0.02,
+            y=i,
+            text='●',
+            showarrow=False,
+            font=dict(size=14, color=color),
+            xref='paper', 
+            yref='y'
+        )
+    
+    # Highlight specific elements if requested
+    if highlight_elements:
+        for elem in highlight_elements:
+            if elem in node_ids:
+                idx = node_indices[elem]
+                
+                # Highlight row and column
+                fig.add_shape(
+                    type="rect",
+                    x0=-0.5,
+                    x1=len(labels) - 0.5,
+                    y0=idx - 0.5,
+                    y1=idx + 0.5,
+                    fillcolor="rgba(255,255,0,0.2)",
+                    line=dict(width=0),
+                    layer="below"
+                )
+                
+                fig.add_shape(
+                    type="rect",
+                    x0=idx - 0.5,
+                    x1=idx + 0.5,
+                    y0=-0.5,
+                    y1=len(labels) - 0.5,
+                    fillcolor="rgba(255,255,0,0.2)",
+                    line=dict(width=0),
+                    layer="below"
+                )
+    
+    # Update layout
+    fig.update_layout(
+        title=title,
+        width=max(600, 30 * n_nodes + 100),
+        height=max(600, 30 * n_nodes + 100),
+        xaxis=dict(
+            title='',
+            tickangle=-45,
+            tickfont=dict(size=10)
+        ),
+        yaxis=dict(
+            title='',
+            tickfont=dict(size=10),
+            automargin=True
+        ),
+        margin=dict(l=120, r=20, t=50, b=120),
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        annotations=[
+            dict(
+                text="Note: This matrix view is shown when NetworkX is not available",
+                showarrow=False,
+                x=0.5,
+                y=-0.15,
+                xref="paper",
+                yref="paper",
+                font=dict(size=10, color="gray")
+            )
+        ]
+    )
+    
+    # Add legend for data types
+    legend_items = [
+        dict(text="● Taxonomy", font=dict(color=TAXONOMY_COLOR)),
+        dict(text="● Keywords", font=dict(color=KEYWORD_COLOR)),
+        dict(text="● Named Entities", font=dict(color=ENTITY_COLOR))
+    ]
+    
+    legend_x = 0.02
+    for item in legend_items:
+        fig.add_annotation(
+            x=legend_x,
+            y=1.05,
+            text=item['text'],
+            showarrow=False,
+            font=item['font'],
+            xref="paper",
+            yref="paper",
+            xanchor="left"
+        )
+        legend_x += 0.15
     
     return fig

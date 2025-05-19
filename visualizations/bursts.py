@@ -14,16 +14,35 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import plotly.figure_factory as ff
-import networkx as nx
+# Try to import networkx, but handle case if not available
+try:
+    import networkx as nx
+    NETWORKX_AVAILABLE = True
+except ImportError:
+    NETWORKX_AVAILABLE = False
 from typing import Dict, List, Optional, Any, Union, Tuple
 from datetime import datetime
 import os
 import glob
-from sklearn.linear_model import LinearRegression
-from scipy.interpolate import interp1d
-from scipy.stats import pearsonr
 from itertools import combinations
 import json
+from visualizations.co_occurrence import create_co_occurrence_network, create_enhanced_co_occurrence_network, create_temporal_co_occurrence_network
+
+# Try to import scipy components, but handle case if not available
+try:
+    from scipy.interpolate import interp1d
+    from scipy.stats import pearsonr
+    import scipy.stats as stats
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
+
+# Try to import sklearn components, but handle case if not available
+try:
+    from sklearn.linear_model import LinearRegression
+    SKLEARN_AVAILABLE = True
+except ImportError:
+    SKLEARN_AVAILABLE = False
 
 # Theme colors for consistency
 THEME_BLUE = "#13376f"  # Main dashboard theme color
@@ -615,27 +634,56 @@ def create_predictive_visualization(
         )
     
     # Add prediction zone background
-    fig.add_shape(
-        type="rect",
-        x0=all_periods[-1],
-        y0=0,
-        x1=next_periods[-1],
-        y1=100,  # Max intensity is 100
-        fillcolor="rgba(230,230,230,0.5)",
-        line=dict(width=0),
-        layer="below"
-    )
+    # The rectangle needs actual data coordinates, so we handle string/numeric periods differently
+    if isinstance(all_periods[-1], str) or isinstance(next_periods[-1], str):
+        # For string periods, we can use category indices which Plotly handles internally
+        # Create marker for prediction zone
+        fig.add_vrect(
+            x0=all_periods[-1],
+            x1=next_periods[-1],
+            fillcolor="rgba(230,230,230,0.5)",
+            line_width=0,
+            layer="below"
+        )
+    else:
+        # For numeric periods, use a standard rectangle shape
+        fig.add_shape(
+            type="rect",
+            x0=all_periods[-1],
+            y0=0,
+            x1=next_periods[-1],
+            y1=100,  # Max intensity is 100
+            fillcolor="rgba(230,230,230,0.5)",
+            line=dict(width=0),
+            layer="below"
+        )
     
     # Add "Prediction Zone" annotation
-    fig.add_annotation(
-        x=(all_periods[-1] + next_periods[-1]) / 2,
-        y=95,
-        text="Prediction Zone",
-        showarrow=False,
-        font=dict(size=12, color="gray"),
-        opacity=0.7,
-        bgcolor="rgba(255,255,255,0.7)"
-    )
+    # Handle the midpoint calculation differently based on whether periods are strings or numbers
+    if isinstance(all_periods[-1], str) or isinstance(next_periods[-1], str):
+        # For string periods, place annotation at a fixed position
+        x_pos = 0.75  # Position annotation at 75% along the x-axis
+        fig.add_annotation(
+            xref="paper",  # Use paper coordinates (0-1) instead of data coordinates
+            x=x_pos,
+            y=95,
+            text="Prediction Zone",
+            showarrow=False,
+            font=dict(size=12, color="gray"),
+            opacity=0.7,
+            bgcolor="rgba(255,255,255,0.7)"
+        )
+    else:
+        # For numeric periods, calculate the midpoint
+        fig.add_annotation(
+            x=(all_periods[-1] + next_periods[-1]) / 2,
+            y=95,
+            text="Prediction Zone",
+            showarrow=False,
+            font=dict(size=12, color="gray"),
+            opacity=0.7,
+            bgcolor="rgba(255,255,255,0.7)"
+        )
     
     # For each element, create a line with prediction
     for elem_data in sorted_elements:
@@ -659,31 +707,67 @@ def create_predictive_visualization(
         X = np.arange(len(x_values)).reshape(-1, 1)  # Convert to numpy array for regression
         y = np.array(y_values)
         
-        model = LinearRegression()
-        model.fit(X, y)
-        
-        # Make predictions for future periods
-        future_X = np.arange(len(x_values), len(x_values) + prediction_periods).reshape(-1, 1)
-        predictions = model.predict(future_X)
-        
+        if SKLEARN_AVAILABLE:
+            # Use sklearn LinearRegression if available
+            model = LinearRegression()
+            model.fit(X, y)
+            
+            # Make predictions for future periods
+            future_X = np.arange(len(x_values), len(x_values) + prediction_periods).reshape(-1, 1)
+            predictions = model.predict(future_X)
+        else:
+            # Fallback to simple linear regression using numpy if sklearn is not available
+            # Calculate slope and intercept
+            n = len(X)
+            x_mean = np.mean(X)
+            y_mean = np.mean(y)
+            
+            # Calculate slope
+            numerator = np.sum((X.flatten() - x_mean) * (y - y_mean))
+            denominator = np.sum((X.flatten() - x_mean) ** 2)
+            slope = numerator / denominator if denominator != 0 else 0
+            
+            # Calculate intercept
+            intercept = y_mean - slope * x_mean
+            
+            # Predict future values
+            future_X = np.arange(len(x_values), len(x_values) + prediction_periods).reshape(-1, 1)
+            predictions = slope * future_X.flatten() + intercept
+            
         # Apply bounds to predictions (0-100%)
         predictions = np.clip(predictions, 0, 100)
         
         # Calculate confidence intervals
         if len(x_values) >= 3:  # Need at least 3 points for meaningful confidence interval
             # Calculate prediction error
-            y_pred = model.predict(X)
+            if SKLEARN_AVAILABLE:
+                y_pred = model.predict(X)
+            else:
+                # Manual prediction for existing points
+                y_pred = slope * X.flatten() + intercept
+                
             residuals = y - y_pred
             mse = np.mean(residuals**2)
             std_error = np.sqrt(mse)
             
             # Calculate t-statistic for confidence level
-            from scipy import stats
-            t_value = stats.t.ppf((1 + confidence_level) / 2, len(x_values) - 2)
+            if SCIPY_AVAILABLE:
+                t_value = stats.t.ppf((1 + confidence_level) / 2, len(x_values) - 2)
+            else:
+                # Simple approximation without scipy
+                if confidence_level >= 0.99:
+                    t_value = 2.58  # ~99% confidence
+                elif confidence_level >= 0.95:
+                    t_value = 1.96  # ~95% confidence
+                elif confidence_level >= 0.90:
+                    t_value = 1.65  # ~90% confidence
+                else:
+                    t_value = 1.28  # ~80% confidence
             
             # Calculate confidence intervals for predictions
             conf_interval = t_value * std_error * np.sqrt(1 + 1/len(x_values) + 
-                                                       (future_X - np.mean(X))**2 / np.sum((X - np.mean(X))**2))
+                                                       (future_X.flatten() - np.mean(X.flatten()))**2 / 
+                                                       np.sum((X.flatten() - np.mean(X.flatten()))**2))
             
             lower_bound = predictions - conf_interval
             upper_bound = predictions + conf_interval
@@ -721,15 +805,33 @@ def create_predictive_visualization(
         ))
         
         # Add confidence interval
-        fig.add_trace(go.Scatter(
-            x=next_periods + next_periods[::-1],
-            y=np.concatenate([upper_bound, lower_bound[::-1]]),
-            fill='toself',
-            fillcolor=color.replace(')', ', 0.2)').replace('rgb', 'rgba'),
-            line=dict(color='rgba(255,255,255,0)'),
-            hoverinfo='skip',
-            showlegend=False
-        ))
+        # Handle string periods differently for concatenation
+        if isinstance(next_periods[0], str):
+            # For string periods, we need to create a full list for x values
+            x_values_for_fill = []
+            x_values_for_fill.extend(next_periods)  # Add periods in order
+            x_values_for_fill.extend(next_periods[::-1])  # Add periods in reverse order
+            
+            fig.add_trace(go.Scatter(
+                x=x_values_for_fill,
+                y=np.concatenate([upper_bound, lower_bound[::-1]]),
+                fill='toself',
+                fillcolor=color.replace(')', ', 0.2)').replace('rgb', 'rgba'),
+                line=dict(color='rgba(255,255,255,0)'),
+                hoverinfo='skip',
+                showlegend=False
+            ))
+        else:
+            # For numeric periods, we can use the + operator
+            fig.add_trace(go.Scatter(
+                x=next_periods + next_periods[::-1],
+                y=np.concatenate([upper_bound, lower_bound[::-1]]),
+                fill='toself',
+                fillcolor=color.replace(')', ', 0.2)').replace('rgb', 'rgba'),
+                line=dict(color='rgba(255,255,255,0)'),
+                hoverinfo='skip',
+                showlegend=False
+            ))
     
     # Update layout
     fig.update_layout(
@@ -979,6 +1081,8 @@ def create_comprehensive_burst_analysis(
     
     # Create co-occurrence network if enabled
     if include_network:
+        # The create_co_occurrence_network function handles networkx availability internally
+        # and will use the matrix fallback visualization if needed
         result['network'] = create_co_occurrence_network(
             burst_data,
             min_burst_intensity=20.0,
@@ -1404,196 +1508,10 @@ def create_burst_timeline(
 
 
 ###########################################
-# Co-occurrence Network Visualization
+# Importing co-occurrence functions from co_occurrence.py
+# Network visualization is handled by functions from co_occurrence.py
+# Which include proper NetworkX fallback mechanisms
 ###########################################
-
-def create_co_occurrence_network(
-    burst_data: Dict[str, Dict[str, pd.DataFrame]],
-    min_burst_intensity: float = 20.0,
-    min_periods: int = 2,
-    min_strength: float = 0.3,
-    title: str = "Burst Co-occurrence Network"
-) -> go.Figure:
-    """
-    Create a network visualization of co-occurring burst elements.
-    
-    Args:
-        burst_data: Dictionary mapping data types to dictionaries of element burst DataFrames
-        min_burst_intensity: Minimum burst intensity to consider as a significant burst
-        min_periods: Minimum number of periods where bursts must co-occur
-        min_strength: Minimum co-occurrence strength to include in the network
-        title: Chart title
-        
-    Returns:
-        go.Figure: Plotly Figure object
-    """
-    # Extract all elements with bursts above threshold
-    element_bursts = {}
-    
-    for data_type, elements in burst_data.items():
-        for element_name, df in elements.items():
-            if df.empty or 'burst_intensity' not in df.columns or 'period' not in df.columns:
-                continue
-                
-            # Create a qualified name with data type prefix
-            if data_type == 'taxonomy':
-                prefix = "T"
-            elif data_type == 'keywords':
-                prefix = "K"
-            else:
-                prefix = "E"
-                
-            qualified_name = f"{prefix}:{element_name}"
-            
-            # Record periods with significant bursts
-            burst_periods = set()
-            for _, row in df.iterrows():
-                if row['burst_intensity'] >= min_burst_intensity:
-                    burst_periods.add(row['period'])
-                    
-            if burst_periods:
-                element_bursts[qualified_name] = burst_periods
-    
-    # Find co-occurrences
-    co_occurrences = {}
-    
-    for elem1, elem2 in combinations(element_bursts.keys(), 2):
-        # Find common burst periods
-        common_periods = element_bursts[elem1].intersection(element_bursts[elem2])
-        
-        if len(common_periods) >= min_periods:
-            # Calculate Jaccard similarity as co-occurrence strength
-            union_periods = element_bursts[elem1].union(element_bursts[elem2])
-            strength = len(common_periods) / len(union_periods)
-            
-            if strength >= min_strength:
-                # Store co-occurrence with its strength
-                co_occurrences[(elem1, elem2)] = {
-                    'strength': strength,
-                    'common_periods': list(common_periods),
-                    'num_common_periods': len(common_periods)
-                }
-    
-    # If no co-occurrences found, return empty chart
-    if not co_occurrences:
-        return go.Figure().update_layout(title="No significant co-occurrences found")
-    
-    # Create network using NetworkX for layout
-    G = nx.Graph()
-    
-    # Add nodes with data type information
-    for node in set([elem for pair in co_occurrences for elem in pair]):
-        data_type, name = node.split(':', 1)
-        G.add_node(node, data_type=data_type, name=name)
-    
-    # Add edges with weights
-    for (source, target), data in co_occurrences.items():
-        G.add_edge(source, target, weight=data['strength'], 
-                  periods=data['common_periods'],
-                  count=data['num_common_periods'])
-    
-    # Use a spring layout for the network
-    pos = nx.spring_layout(G, seed=42)
-    
-    # Prepare node colors by data type
-    node_color_map = {'T': TAXONOMY_COLOR, 'K': KEYWORD_COLOR, 'E': ENTITY_COLOR}
-    node_colors = [node_color_map[G.nodes[node]['data_type']] for node in G.nodes()]
-    
-    # Calculate node sizes based on degree
-    node_sizes = [10 + 5 * G.degree(node) for node in G.nodes()]
-    
-    # Prepare the figure
-    edge_traces = []
-    
-    # Create edge traces
-    for edge in G.edges():
-        x0, y0 = pos[edge[0]]
-        x1, y1 = pos[edge[1]]
-        weight = G.edges[edge]['weight']
-        width = 1 + 5 * weight  # Scale line width by weight
-        
-        edge_trace = go.Scatter(
-            x=[x0, x1, None],
-            y=[y0, y1, None],
-            line=dict(width=width, color='rgba(150,150,150,0.5)'),
-            hoverinfo='none',
-            mode='lines'
-        )
-        edge_traces.append(edge_trace)
-    
-    # Create node trace
-    node_trace = go.Scatter(
-        x=[pos[node][0] for node in G.nodes()],
-        y=[pos[node][1] for node in G.nodes()],
-        mode='markers',
-        marker=dict(
-            showscale=False,
-            size=node_sizes,
-            color=node_colors,
-            line=dict(width=2, color='white')
-        ),
-        text=[f"{G.nodes[node]['name']} ({G.nodes[node]['data_type']})" for node in G.nodes()],
-        hovertemplate='<b>%{text}</b><br>Connections: %{marker.size}<extra></extra>'
-    )
-    
-    # Combine all traces
-    fig = go.Figure(data=edge_traces + [node_trace])
-    
-    # Create legend traces for data types
-    legend_traces = [
-        go.Scatter(
-            x=[None], y=[None], mode='markers',
-            marker=dict(size=10, color=TAXONOMY_COLOR),
-            name='Taxonomy Elements'
-        ),
-        go.Scatter(
-            x=[None], y=[None], mode='markers',
-            marker=dict(size=10, color=KEYWORD_COLOR),
-            name='Keywords'
-        ),
-        go.Scatter(
-            x=[None], y=[None], mode='markers',
-            marker=dict(size=10, color=ENTITY_COLOR),
-            name='Named Entities'
-        )
-    ]
-    
-    # Add legend traces
-    for trace in legend_traces:
-        fig.add_trace(trace)
-    
-    # Update layout
-    fig.update_layout(
-        title=title,
-        showlegend=True,
-        hovermode='closest',
-        margin=dict(b=20, l=5, r=5, t=40),
-        height=600,
-        plot_bgcolor=TIMELINE_BG_COLOR,
-        paper_bgcolor="white",
-        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=-0.15,
-            xanchor="center",
-            x=0.5
-        ),
-        annotations=[
-            dict(
-                text="<b>Node size</b>: Number of connections<br><b>Edge width</b>: Co-occurrence strength",
-                showarrow=False,
-                x=0.5,
-                y=-0.2,
-                xref="paper",
-                yref="paper",
-                font=dict(size=10)
-            )
-        ]
-    )
-    
-    return fig
 
 
 def create_burst_comparison_chart(
