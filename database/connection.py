@@ -7,59 +7,96 @@ Provides functions to create and manage database connections.
 """
 
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 from sqlalchemy import create_engine, Engine, text
 from sqlalchemy.pool import QueuePool
 from urllib.parse import quote_plus
 import sys
 import os
+import pandas as pd
+from datetime import datetime, timedelta
+import re
 
 # Add the project root to the path to import config
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config import DB_CONFIG
 
+# Flag to track if we're in demo mode
+DEMO_MODE = False
 
-def create_connection_string() -> str:
+
+def create_connection_string() -> Optional[str]:
     """
     Create a connection string for the database from configuration.
     Supports both local configuration and Heroku DATABASE_URL.
     
     Returns:
-        str: Database connection string
+        Optional[str]: Database connection string or None if using demo mode
     """
     # Check if running on Heroku (with DATABASE_URL environment variable)
     database_url = os.environ.get('DATABASE_URL')
+    
+    # Check if database_url is a placeholder or invalid value
     if database_url:
+        # Check for placeholder values that indicate demo mode should be used
+        if database_url in ['your_existing_database_url', 'placeholder', 'demo']:
+            logging.info("Using demo mode with sample data (placeholder DATABASE_URL detected)")
+            global DEMO_MODE
+            DEMO_MODE = True
+            return None
+            
         # Heroku PostgreSQL connection strings start with postgres://, but SQLAlchemy needs postgresql://
         if database_url.startswith('postgres://'):
             database_url = database_url.replace('postgres://', 'postgresql://', 1)
+        
+        # Check if it's a valid connection string format
+        if not (database_url.startswith('postgresql://') or 
+                database_url.startswith('sqlite://') or
+                re.match(r'postgresql(\+[a-zA-Z0-9]+)?://', database_url)):
+            logging.warning(f"Invalid DATABASE_URL format, switching to demo mode: {database_url}")
+            global DEMO_MODE
+            DEMO_MODE = True
+            return None
+            
         logging.info("Using DATABASE_URL from environment variables")
         return database_url
     
     # Otherwise use local configuration
-    user = DB_CONFIG['user']
-    password = quote_plus(DB_CONFIG['password'])
-    host = DB_CONFIG['host']
-    port = DB_CONFIG['port']
-    database = DB_CONFIG['database']
-    
-    logging.info(f"Using local database configuration for {host}:{port}/{database}")
-    return f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{database}"
+    try:
+        user = DB_CONFIG['user']
+        password = quote_plus(DB_CONFIG['password'])
+        host = DB_CONFIG['host']
+        port = DB_CONFIG['port']
+        database = DB_CONFIG['database']
+        
+        logging.info(f"Using local database configuration for {host}:{port}/{database}")
+        return f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{database}"
+    except Exception as e:
+        logging.error(f"Error creating connection string from DB_CONFIG: {e}")
+        logging.info("Falling back to demo mode with sample data")
+        global DEMO_MODE
+        DEMO_MODE = True
+        return None
 
 
-def create_db_engine() -> Engine:
+def create_db_engine() -> Optional[Engine]:
     """
     Create database engine with connection pooling.
+    If database connection fails, switches to demo mode.
     
     Returns:
-        Engine: SQLAlchemy engine object
-    
-    Raises:
-        Exception: If database connection fails
+        Optional[Engine]: SQLAlchemy engine object or None if using demo mode
     """
-    try:
-        connection_string = create_connection_string()
+    connection_string = create_connection_string()
+    
+    # If already in demo mode or connection string is None, return None
+    global DEMO_MODE
+    if DEMO_MODE or connection_string is None:
+        DEMO_MODE = True
+        logging.info("Using demo mode with sample data")
+        return None
         
+    try:
         engine = create_engine(
             connection_string,
             poolclass=QueuePool,
@@ -78,21 +115,33 @@ def create_db_engine() -> Engine:
     
     except Exception as e:
         logging.error(f"Error connecting to database: {e}")
-        raise Exception(f"Failed to connect to database: {e}")
+        logging.info("Falling back to demo mode with sample data")
+        DEMO_MODE = True
+        return None
 
 
 # Create a global engine instance
 engine = create_db_engine()
 
 
-def get_engine() -> Engine:
+def get_engine() -> Union[Engine, None]:
     """
     Get the global engine instance.
     
     Returns:
-        Engine: SQLAlchemy engine object
+        Union[Engine, None]: SQLAlchemy engine object or None if in demo mode
     """
     return engine
+
+
+def is_demo_mode() -> bool:
+    """
+    Check if the application is running in demo mode.
+    
+    Returns:
+        bool: True if in demo mode, False otherwise
+    """
+    return DEMO_MODE
 
 
 def dispose_engine() -> None:

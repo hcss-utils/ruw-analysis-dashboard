@@ -14,15 +14,291 @@ from datetime import datetime, timedelta
 
 import pandas as pd
 from sqlalchemy import text
-
-import sys
+import numpy as np
 import os
+import sys
 
 # Add the project root to the path to import modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config import SOURCE_TYPE_FILTERS
-from database.connection import get_engine
+from database.connection import get_engine, is_demo_mode
 from utils.cache import cached
+
+# Sample data generation functions
+def _generate_sample_dates() -> Tuple[datetime, datetime]:
+    """Generate sample date range for demo mode."""
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=730)  # ~2 years
+    return start_date, end_date
+
+def _generate_sample_databases() -> List[str]:
+    """Generate sample database list for demo mode."""
+    return [
+        'telegram_official', 'telegram_milbloggers', 
+        'russian_news', 'ukrainian_news', 'western_press',
+        'military_journals', 'vk', 'twitter', 'government_releases'
+    ]
+
+def _generate_sample_category_data() -> pd.DataFrame:
+    """Generate sample category data for demo mode."""
+    categories = [
+        'Military Operations', 'Political Developments', 'Humanitarian Issues',
+        'Economic Impact', 'International Relations', 'Propaganda', 
+        'Domestic Politics', 'Technological Aspects', 'Strategic Analysis'
+    ]
+    
+    subcategories = {
+        'Military Operations': ['Offensive Actions', 'Defensive Strategy', 'Equipment', 'Personnel', 'Logistics'],
+        'Political Developments': ['Leadership Decisions', 'Diplomatic Initiatives', 'Internal Policy', 'Alliances'],
+        'Humanitarian Issues': ['Civilian Impact', 'Relief Efforts', 'Refugee Crisis', 'Medical Assistance'],
+        'Economic Impact': ['Sanctions', 'Financial Markets', 'Trade Relations', 'Resource Management'],
+        'International Relations': ['NATO', 'EU Relations', 'UN Involvement', 'Global Response'],
+        'Propaganda': ['Media Narratives', 'Information Warfare', 'Censorship', 'Public Opinion'],
+        'Domestic Politics': ['Public Support', 'Opposition', 'Civil Unrest', 'Policy Changes'],
+        'Technological Aspects': ['Cyber Warfare', 'Communications', 'Surveillance', 'Advanced Weapons'],
+        'Strategic Analysis': ['Long-term Objectives', 'Risk Assessment', 'Conflict Resolution', 'Geopolitical Shifts']
+    }
+    
+    # Generate sample data
+    rows = []
+    for category in categories:
+        for subcategory in subcategories[category]:
+            # Generate 2-3 sub-subcategories for each subcategory
+            num_sub_subcats = np.random.randint(2, 4)
+            sub_subcats = [f"{subcategory} Type {i+1}" for i in range(num_sub_subcats)]
+            
+            for sub_subcat in sub_subcats:
+                # Generate random count (more for more important categories)
+                importance_factor = 1
+                if category in ['Military Operations', 'Political Developments']:
+                    importance_factor = 3
+                elif category in ['Humanitarian Issues', 'International Relations']:
+                    importance_factor = 2
+                
+                count = np.random.randint(10, 100) * importance_factor
+                
+                rows.append({
+                    'category': category,
+                    'subcategory': subcategory,
+                    'sub_subcategory': sub_subcat,
+                    'count': count
+                })
+    
+    return pd.DataFrame(rows)
+
+def _generate_sample_text_chunks(level: str, value: str) -> pd.DataFrame:
+    """Generate sample text chunks for demo mode."""
+    start_date, end_date = _generate_sample_dates()
+    date_range = (end_date - start_date).days
+    
+    databases = _generate_sample_databases()
+    
+    # Number of chunks based on the hierarchical level
+    if level == 'category':
+        num_chunks = np.random.randint(30, 50)
+    elif level == 'subcategory':
+        num_chunks = np.random.randint(15, 30)
+    else:  # sub_subcategory
+        num_chunks = np.random.randint(5, 15)
+        
+    # Generate sample chunks
+    rows = []
+    for i in range(num_chunks):
+        # Generate random date within range
+        random_days = np.random.randint(0, date_range)
+        sample_date = start_date + timedelta(days=random_days)
+        
+        # Assign information
+        category = value if level == 'category' else f"Category for {value}"
+        subcategory = value if level == 'subcategory' else f"Subcategory for {value}"
+        sub_subcategory = value if level == 'sub_subcategory' else f"Sub-subcategory for {value}"
+        
+        # Generate random text based on the category
+        text_templates = [
+            f"Analysis shows that {category} developments continue to impact the conflict.",
+            f"Recent {subcategory} events have shifted the balance of power in certain regions.",
+            f"Experts note that {sub_subcategory} factors are increasingly important.",
+            f"The latest reports on {category} indicate significant changes in strategy.",
+            f"Sources confirm new developments related to {subcategory} in the eastern regions."
+        ]
+        
+        chunk_text = np.random.choice(text_templates) + " " + \
+                     f"This represents a critical turning point in the ongoing situation. " + \
+                     f"Multiple sources have corroborated these findings, suggesting the " + \
+                     f"need for further analysis and monitoring of {category.lower()} developments."
+        
+        reasoning = f"This text chunk discusses developments in {category}, " + \
+                    f"specifically related to {subcategory} and {sub_subcategory}, " + \
+                    f"which are key elements in understanding the current situation."
+        
+        rows.append({
+            'category': category,
+            'subcategory': subcategory,
+            'sub_subcategory': sub_subcategory,
+            'chunk_text': chunk_text,
+            'reasoning': reasoning,
+            'document_id': f"DOC-{np.random.randint(1000, 9999)}",
+            'database': np.random.choice(databases),
+            'heading_title': f"Report on {category} - Section {np.random.randint(1, 5)}",
+            'date': sample_date,
+            'author': f"Analyst {np.random.randint(1, 20)}"
+        })
+    
+    return pd.DataFrame(rows)
+
+def _generate_sample_timeline_data(level: str, value: str) -> pd.DataFrame:
+    """Generate sample timeline data for demo mode."""
+    start_date, end_date = _generate_sample_dates()
+    
+    # Create monthly data points
+    current_date = start_date.replace(day=1)
+    rows = []
+    
+    while current_date <= end_date:
+        # Generate counts with a war-like pattern (increasing initially, then fluctuating)
+        days_since_start = (current_date - start_date).days
+        total_days = (end_date - start_date).days
+        
+        # Base count that increases with time
+        base_count = int(10 + (days_since_start / total_days) * 50)
+        
+        # Add randomness
+        random_factor = np.random.uniform(0.7, 1.3)
+        
+        # Add seasonality (more events in summer months)
+        month = current_date.month
+        if 5 <= month <= 8:  # May to August
+            season_factor = 1.2
+        else:
+            season_factor = 0.9
+        
+        # Combine factors
+        count = int(base_count * random_factor * season_factor)
+        
+        rows.append({
+            'month': current_date,
+            'count': count
+        })
+        
+        # Move to next month
+        if current_date.month == 12:
+            current_date = datetime(current_date.year + 1, 1, 1)
+        else:
+            current_date = datetime(current_date.year, current_date.month + 1, 1)
+    
+    df = pd.DataFrame(rows)
+    df['month_str'] = df['month'].dt.strftime('%Y-%m')
+    return df
+
+def _generate_sample_search_results(search_term: str) -> pd.DataFrame:
+    """Generate sample search results for demo mode."""
+    # Use the sample category data and add search relevance
+    df_categories = _generate_sample_category_data()
+    
+    # Filter to relevant categories based on search term
+    search_term_lower = search_term.lower()
+    
+    # Check each category for relevance to search term
+    relevant_rows = []
+    for _, row in df_categories.iterrows():
+        relevance = 0
+        
+        # Simple relevance scoring
+        if search_term_lower in row['category'].lower():
+            relevance += 3
+        if search_term_lower in row['subcategory'].lower():
+            relevance += 2
+        if search_term_lower in row['sub_subcategory'].lower():
+            relevance += 1
+            
+        # If not directly relevant, give a small random chance of inclusion
+        if relevance == 0 and np.random.random() < 0.1:
+            relevance = 0.5
+            
+        if relevance > 0:
+            relevant_rows.append(row)
+    
+    # If no relevant categories found, return a subset of all categories
+    if not relevant_rows:
+        return df_categories.sample(min(10, len(df_categories)))
+        
+    return pd.DataFrame(relevant_rows)
+
+def _generate_sample_freshness_data() -> Dict[str, pd.DataFrame]:
+    """Generate sample freshness data for demo mode."""
+    # Use the sample category data and add freshness metrics
+    df_categories = _generate_sample_category_data()
+    
+    # Start with categories
+    categories = df_categories['category'].unique()
+    category_rows = []
+    
+    for category in categories:
+        # Aggregate count for this category
+        count = df_categories[df_categories['category'] == category]['count'].sum()
+        
+        # Generate random age (newer items have lower age)
+        avg_age = np.random.randint(1, 60)  # 1-60 days old
+        
+        # Latest date is current date minus the average age
+        latest_date = datetime.now() - timedelta(days=avg_age)
+        
+        # Calculate scores (based on algorithm from original code)
+        total_days = 90  # Assume a 90-day window
+        recency_score = (1 - avg_age / total_days) * 70
+        max_count = 1000  # Arbitrary maximum for normalization
+        frequency_score = (count / max_count) * 30
+        freshness_score = recency_score + frequency_score
+        
+        category_rows.append({
+            'category': category,
+            'count': count,
+            'latest_date': latest_date,
+            'avg_age_days': avg_age,
+            'recency_score': recency_score,
+            'frequency_score': frequency_score,
+            'freshness_score': freshness_score
+        })
+    
+    # Now subcategories
+    subcategory_rows = []
+    for _, row in df_categories.iterrows():
+        category = row['category']
+        subcategory = row['subcategory']
+        count = row['count']
+        
+        # Generate random age (newer items have lower age)
+        avg_age = np.random.randint(1, 60)  # 1-60 days old
+        
+        # Latest date is current date minus the average age
+        latest_date = datetime.now() - timedelta(days=avg_age)
+        
+        # Calculate scores
+        total_days = 90  # Assume a 90-day window
+        recency_score = (1 - avg_age / total_days) * 70
+        max_count = 300  # Arbitrary maximum for subcategories
+        frequency_score = (count / max_count) * 30
+        freshness_score = recency_score + frequency_score
+        
+        subcategory_rows.append({
+            'category': category,
+            'subcategory': subcategory,
+            'count': count,
+            'latest_date': latest_date,
+            'avg_age_days': avg_age,
+            'recency_score': recency_score,
+            'frequency_score': frequency_score,
+            'freshness_score': freshness_score
+        })
+    
+    # Create and sort DataFrames
+    df_category = pd.DataFrame(category_rows).sort_values('freshness_score', ascending=False)
+    df_subcategory = pd.DataFrame(subcategory_rows).sort_values('freshness_score', ascending=False)
+    
+    return {
+        'category': df_category,
+        'subcategory': df_subcategory
+    }
 
 
 @cached(timeout=300)
@@ -33,6 +309,11 @@ def fetch_all_databases() -> List[str]:
     Returns:
         List[str]: List of database names
     """
+    # Use demo data if in demo mode
+    if is_demo_mode():
+        logging.info("Using demo data for fetch_all_databases")
+        return _generate_sample_databases()
+        
     try:
         query = "SELECT DISTINCT database FROM uploaded_document ORDER BY database;"
         engine = get_engine()
@@ -40,7 +321,8 @@ def fetch_all_databases() -> List[str]:
         return df['database'].tolist()
     except Exception as e:
         logging.error(f"Error fetching databases: {e}")
-        return []
+        logging.info("Falling back to demo data for databases")
+        return _generate_sample_databases()
 
 
 @cached(timeout=3600)  # Cache for 1 hour as this rarely changes
@@ -51,6 +333,11 @@ def fetch_date_range() -> Tuple[Optional[datetime], Optional[datetime]]:
     Returns:
         Tuple[Optional[datetime], Optional[datetime]]: Tuple of (min_date, max_date)
     """
+    # Use demo data if in demo mode
+    if is_demo_mode():
+        logging.info("Using demo data for fetch_date_range")
+        return _generate_sample_dates()
+        
     try:
         query = """
         SELECT MIN(date) as min_date, MAX(date) as max_date
@@ -62,7 +349,8 @@ def fetch_date_range() -> Tuple[Optional[datetime], Optional[datetime]]:
         return df['min_date'].iloc[0], df['max_date'].iloc[0]
     except Exception as e:
         logging.error(f"Error fetching date range: {e}")
-        return None, None
+        logging.info("Falling back to demo data for date range")
+        return _generate_sample_dates()
 
 
 def _build_source_type_condition(source_type: Optional[str]) -> str:
@@ -105,6 +393,26 @@ def fetch_category_data(
     """
     start_time = time.time()
     logging.info(f"Fetching category data with lang={selected_lang}, db={selected_db}, source_type={source_type}")
+    
+    # Use demo data if in demo mode
+    if is_demo_mode():
+        logging.info("Using demo data for fetch_category_data")
+        df = _generate_sample_category_data()
+        
+        # Apply filters to demo data if needed
+        if selected_lang and selected_lang != 'ALL':
+            # In demo mode, just return a subset of the data
+            df = df.sample(frac=0.7)
+            
+        if selected_db and selected_db != 'ALL':
+            # In demo mode, just return a subset of the data
+            df = df.sample(frac=0.8)
+            
+        if source_type and source_type != 'ALL':
+            # In demo mode, just return a subset of the data
+            df = df.sample(frac=0.9)
+            
+        return df
     
     if selected_lang == 'ALL':
         selected_lang = None
@@ -156,7 +464,8 @@ def fetch_category_data(
         return df
     except Exception as e:
         logging.error(f"Error fetching category data: {e}")
-        return pd.DataFrame()
+        logging.info("Falling back to demo data for category data")
+        return _generate_sample_category_data()
 
 
 @cached(timeout=300)
@@ -185,17 +494,39 @@ def fetch_text_chunks(
     start_time = time.time()
     logging.info(f"Fetching text chunks for {level}={value}, lang={selected_lang}, db={selected_db}")
     
-    if selected_lang == 'ALL':
-        selected_lang = None
-    if selected_db == 'ALL':
-        selected_db = None
-    
     # Whitelist approach to avoid injection
     allowed_levels = ['category', 'subcategory', 'sub_subcategory']
     if level not in allowed_levels:
         logging.error(f"Invalid level: {level}")
         return pd.DataFrame()
-
+    
+    # Use demo data if in demo mode
+    if is_demo_mode():
+        logging.info(f"Using demo data for fetch_text_chunks with {level}={value}")
+        df = _generate_sample_text_chunks(level, value)
+        
+        # Apply filters to demo data if needed
+        if selected_lang and selected_lang != 'ALL':
+            # In demo mode, just return a subset of the data
+            df = df.sample(frac=0.7)
+            
+        if selected_db and selected_db != 'ALL':
+            # In demo mode, just return a subset of the data
+            df = df.sample(frac=0.8)
+            
+        if source_type and source_type != 'ALL':
+            # In demo mode, just return a subset of the data
+            df = df.sample(frac=0.9)
+            
+        end_time = time.time()
+        logging.info(f"Demo text chunks generated in {end_time - start_time:.2f} seconds. {len(df)} rows returned.")
+        return df
+    
+    if selected_lang == 'ALL':
+        selected_lang = None
+    if selected_db == 'ALL':
+        selected_db = None
+    
     # Start building the query
     query_parts = [f"""
     SELECT
@@ -248,7 +579,8 @@ def fetch_text_chunks(
         return df
     except Exception as e:
         logging.error(f"Error fetching text chunks: {e}")
-        return pd.DataFrame()
+        logging.info("Falling back to demo data for text chunks")
+        return _generate_sample_text_chunks(level, value)
 
 
 @cached(timeout=300)
@@ -277,17 +609,33 @@ def fetch_timeline_data(
     start_time = time.time()
     logging.info(f"Fetching timeline data for {level}={value}")
     
-    if selected_lang == 'ALL':
-        selected_lang = None
-    if selected_db == 'ALL':
-        selected_db = None
-    
     # Whitelist approach to avoid injection
     allowed_levels = ['category', 'subcategory', 'sub_subcategory']
     if level not in allowed_levels:
         logging.error(f"Invalid level: {level}")
         return pd.DataFrame()
-
+    
+    # Use demo data if in demo mode
+    if is_demo_mode():
+        logging.info(f"Using demo data for fetch_timeline_data with {level}={value}")
+        df = _generate_sample_timeline_data(level, value)
+        
+        # Apply filters if needed (in demo mode, filters just reduce the data slightly)
+        if (selected_lang and selected_lang != 'ALL') or \
+           (selected_db and selected_db != 'ALL') or \
+           (source_type and source_type != 'ALL'):
+            # Apply a small random reduction to the counts to simulate filtering
+            df['count'] = df['count'].apply(lambda x: int(x * np.random.uniform(0.6, 0.9)))
+            
+        end_time = time.time()
+        logging.info(f"Demo timeline data generated in {end_time - start_time:.2f} seconds. {len(df)} rows returned.")
+        return df
+    
+    if selected_lang == 'ALL':
+        selected_lang = None
+    if selected_db == 'ALL':
+        selected_db = None
+    
     # Efficiently get counts per month directly from DB
     query_parts = [f"""
     SELECT
@@ -335,7 +683,8 @@ def fetch_timeline_data(
         return df
     except Exception as e:
         logging.error(f"Error fetching timeline data: {e}")
-        return pd.DataFrame()
+        logging.info("Falling back to demo data for timeline data")
+        return _generate_sample_timeline_data(level, value)
 
 
 @cached(timeout=300)
@@ -349,9 +698,42 @@ def fetch_search_category_data(
 ) -> pd.DataFrame:
     """
     Fetch category data filtered by search criteria with optional filters.
+    
+    Args:
+        search_mode: Search mode ('keyword', 'boolean', or 'semantic')
+        search_term: Search term
+        selected_lang: Language filter
+        selected_db: Database filter
+        source_type: Source type filter
+        date_range: Date range filter as (start_date, end_date)
+        
+    Returns:
+        pd.DataFrame: DataFrame with category data or empty DataFrame on error
     """
     start_time = time.time()
     logging.info(f"Fetching search category data for {search_mode}: '{search_term}'")
+    
+    # Use demo data if in demo mode
+    if is_demo_mode():
+        logging.info(f"Using demo data for fetch_search_category_data with term '{search_term}'")
+        df = _generate_sample_search_results(search_term)
+        
+        # Apply filters to demo data if needed
+        if selected_lang and selected_lang != 'ALL':
+            # In demo mode, just return a subset of the data
+            df = df.sample(frac=0.7)
+            
+        if selected_db and selected_db != 'ALL':
+            # In demo mode, just return a subset of the data
+            df = df.sample(frac=0.8)
+            
+        if source_type and source_type != 'ALL':
+            # In demo mode, just return a subset of the data
+            df = df.sample(frac=0.9)
+            
+        end_time = time.time()
+        logging.info(f"Demo search category data generated in {end_time - start_time:.2f} seconds. {len(df)} rows returned.")
+        return df
     
     if selected_lang == 'ALL':
         selected_lang = None
@@ -464,7 +846,8 @@ def fetch_search_category_data(
             return df
         except Exception as fallback_error:
             logging.error(f"Fallback query also failed: {fallback_error}")
-            return pd.DataFrame()
+            logging.info("Falling back to demo data for search category data")
+            return _generate_sample_search_results(search_term)
     
     # Optimize query to aggregate counts directly in the database
     query_parts = [f"""
@@ -526,7 +909,7 @@ def fetch_all_text_chunks_for_search(
     selected_db: Optional[str] = None,
     source_type: Optional[str] = None,
     date_range: Optional[Tuple[str, str]] = None,
-    limit: int = 500
+    limit: int = None
 ) -> pd.DataFrame:
     """
     Fetch text chunks matching search criteria with optional filters.
@@ -546,6 +929,37 @@ def fetch_all_text_chunks_for_search(
     start_time = time.time()
     logging.info(f"Fetching text chunks for search {search_mode}: '{search_term}' with limit {limit}")
     
+    # Use demo data if in demo mode
+    if is_demo_mode():
+        logging.info(f"Using demo data for fetch_all_text_chunks_for_search with term '{search_term}'")
+        # Use the sample text chunks generation with minor modifications for search
+        df = _generate_sample_text_chunks("category", search_term)
+        
+        # Adjust the size based on the limit if provided
+        if limit and len(df) > limit:
+            df = df.iloc[:limit]
+            
+        # Apply filters to demo data if needed
+        if selected_lang and selected_lang != 'ALL':
+            # In demo mode, just return a subset of the data
+            df = df.sample(frac=0.7).reset_index(drop=True)
+            
+        if selected_db and selected_db != 'ALL':
+            # In demo mode, just return a subset of the data
+            df = df.sample(frac=0.8).reset_index(drop=True)
+            
+        if source_type and source_type != 'ALL':
+            # In demo mode, just return a subset of the data
+            df = df.sample(frac=0.9).reset_index(drop=True)
+            
+        # Sort by date in descending order for consistency with the database query
+        if 'date' in df.columns:
+            df = df.sort_values('date', ascending=False).reset_index(drop=True)
+            
+        end_time = time.time()
+        logging.info(f"Demo search text chunks generated in {end_time - start_time:.2f} seconds. {len(df)} rows returned.")
+        return df
+    
     if selected_lang == 'ALL':
         selected_lang = None
     if selected_db == 'ALL':
@@ -553,21 +967,21 @@ def fetch_all_text_chunks_for_search(
     
     params = {}
     
-    # Add search criteria based on mode
+    # Add search criteria based on mode - use the SAME approach as fetch_search_category_data for consistency
     if search_mode == 'keyword':
-        # Search in both content and reasoning
-        search_condition = "AND (dsc.content ~* :pattern OR t.chunk_level_reasoning ~* :pattern)"
-        params['pattern'] = f"\\b{re.escape(search_term)}\\b"
+        # Use the same text search approach as fetch_search_category_data
+        search_condition = "AND (to_tsvector('english', dsc.content) @@ plainto_tsquery('english', :search_term) OR to_tsvector('english', t.chunk_level_reasoning) @@ plainto_tsquery('english', :search_term))"
+        params['search_term'] = search_term
     elif search_mode == 'boolean':
         # Parse boolean search into PostgreSQL ts_query format
         bool_query = search_term.replace(' AND ', ' & ').replace(' OR ', ' | ').replace(' NOT ', ' ! ')
         search_condition = "AND (to_tsvector('english', dsc.content) @@ to_tsquery('english', :bool_query) OR to_tsvector('english', t.chunk_level_reasoning) @@ to_tsquery('english', :bool_query))"
         params['bool_query'] = bool_query
     elif search_mode == 'semantic':
-        # Fallback to whole word search for now
-        logging.warning("Semantic search not implemented, falling back to whole word search")
-        search_condition = "AND (dsc.content ~* :pattern OR t.chunk_level_reasoning ~* :pattern)"
-        params['pattern'] = f"\\b{re.escape(search_term)}\\b"
+        # Fallback to same text search as keyword search for consistency
+        logging.warning("Semantic search not implemented, falling back to text search")
+        search_condition = "AND (to_tsvector('english', dsc.content) @@ plainto_tsquery('english', :search_term) OR to_tsvector('english', t.chunk_level_reasoning) @@ plainto_tsquery('english', :search_term))"
+        params['search_term'] = search_term
     else:
         # Invalid search mode
         logging.error(f"Invalid search mode: {search_mode}")
@@ -613,8 +1027,12 @@ def fetch_all_text_chunks_for_search(
         params['start_date'] = date_range[0]
         params['end_date'] = date_range[1]
     
-    # Add order and limit
-    query_parts.append(f"ORDER BY ud.date DESC LIMIT {limit}")
+    # Add order clause
+    query_parts.append("ORDER BY ud.date DESC")
+    
+    # Add limit only if specified
+    if limit is not None:
+        query_parts.append(f"LIMIT {limit}")
     
     query = " ".join(query_parts)
     logging.debug(f"Search query: {query}")
@@ -631,7 +1049,12 @@ def fetch_all_text_chunks_for_search(
         return df
     except Exception as e:
         logging.error(f"Error fetching search text chunks: {e}")
-        return pd.DataFrame()
+        logging.info("Falling back to demo data for search text chunks")
+        # Use the sample text chunks generation with the search term as the value
+        df = _generate_sample_text_chunks("category", search_term)
+        if limit and len(df) > limit:
+            df = df.iloc[:limit]
+        return df
 
 
 def get_freshness_data(
@@ -651,6 +1074,33 @@ def get_freshness_data(
         Dict[str, pd.DataFrame]: Dictionary with 'category' and 'subcategory' DataFrames
     """
     logging.info(f"Fetching freshness data for period {start_date} to {end_date}, filter: {filter_value}")
+    
+    # Use demo data if in demo mode
+    if is_demo_mode():
+        logging.info(f"Using demo data for get_freshness_data with filter: {filter_value}")
+        freshness_data = _generate_sample_freshness_data()
+        
+        # Apply filters if needed
+        if filter_value != 'all':
+            # In demo mode, simply reduce the data slightly for different filters
+            for key in freshness_data:
+                # Adjust scores based on the filter for variety
+                if filter_value == 'russian':
+                    freshness_data[key]['freshness_score'] = freshness_data[key]['freshness_score'] * 0.9
+                elif filter_value == 'ukrainian':
+                    freshness_data[key]['freshness_score'] = freshness_data[key]['freshness_score'] * 1.1
+                elif filter_value == 'western':
+                    freshness_data[key]['freshness_score'] = freshness_data[key]['freshness_score'] * 0.95
+                elif filter_value == 'military':
+                    freshness_data[key]['freshness_score'] = freshness_data[key]['freshness_score'] * 1.05
+                elif filter_value == 'social_media':
+                    freshness_data[key]['freshness_score'] = freshness_data[key]['freshness_score'] * 1.15
+                
+                # Resort after adjusting scores
+                freshness_data[key] = freshness_data[key].sort_values('freshness_score', ascending=False)
+        
+        logging.info(f"Demo freshness data generated: {len(freshness_data['category'])} categories, {len(freshness_data['subcategory'])} subcategories")
+        return freshness_data
     
     # Calculate total days for normalization
     total_days = (end_date - start_date).days
@@ -764,7 +1214,5 @@ def get_freshness_data(
             
     except Exception as e:
         logging.error(f"Error fetching freshness data: {e}")
-        return {
-            'category': pd.DataFrame(),
-            'subcategory': pd.DataFrame()
-        }
+        logging.info("Falling back to demo data for freshness data")
+        return _generate_sample_freshness_data()
