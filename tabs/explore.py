@@ -61,6 +61,30 @@ def create_explore_tab_layout(db_options: List, min_date: datetime = None, max_d
     
     # Create tab layout
     explore_tab_layout = html.Div([
+        # Fixed Back to Text Chunks button
+        html.A(
+            html.Button(
+                "↑ Back to Text Chunks", 
+                id="back-to-chunks-btn",
+                style={
+                    "position": "fixed", 
+                    "bottom": "20px", 
+                    "right": "20px", 
+                    "z-index": "9999",
+                    "background-color": "#13376f",  # Using the blue_color variable
+                    "color": "white",
+                    "font-weight": "bold",
+                    "border": "none",
+                    "border-radius": "4px",
+                    "padding": "10px 20px",
+                    "box-shadow": "0 4px 8px rgba(0,0,0,0.2)",
+                    "cursor": "pointer",
+                    "width": "200px"
+                }
+            ),
+            href="#chunks-selection-title-container"
+        ),
+        
         # Header with title and About button
         html.Div([
             html.H3("Explore Data", style={"display": "inline-block", "margin-right": "20px"}),
@@ -105,13 +129,6 @@ def create_explore_tab_layout(db_options: List, min_date: datetime = None, max_d
         style={'margin-bottom': '0px', 'width': '100%', 'display': 'flex', 'justify-content': 'center'},
         className="sunburst-chart-container"),
 
-        # Selection title and stats with reduced top margin
-        html.Div(
-            id='selection-title-container',
-            style={'background': 'white', 'zIndex': 100, 'padding': '5px 0', 'text-align': 'center', 'margin-top': '10px'},
-            className="selection-title"
-        ),
-        html.Div(id='selection-stats', style={'margin-bottom': '15px', 'text-align': 'center'}),
 
         # Timeline chart
         html.Div(id='timeline-container', children=[
@@ -133,6 +150,16 @@ def create_explore_tab_layout(db_options: List, min_date: datetime = None, max_d
             'display': 'none',
             'text-align': 'center'
         }, className="timeline-caption"),
+        
+        # Move selection-title-container here to position the spinner right underneath it
+        html.Div(
+            id='chunks-selection-title-container',
+            style={
+                'margin-bottom': '10px',
+                'scroll-margin-top': '150px'  # Provides space when scrolling to this element
+            },
+        ),
+        html.Div(id='chunks-selection-stats', style={'margin-bottom': '15px', 'text-align': 'center'}),
 
         # Loading spinner for chunks - use the same spinner style for consistency
         dcc.Loading(
@@ -153,6 +180,7 @@ def create_explore_tab_layout(db_options: List, min_date: datetime = None, max_d
 
         # Download buttons
         create_download_buttons("explore"),
+        
 
         # Storage components
         dcc.Store(id='filtered-chunks-store'),
@@ -366,8 +394,8 @@ def register_explore_callbacks(app):
     # Callback for pagination and displaying text chunks
     @app.callback(
         [
-            Output('selection-title-container', 'children'),
-            Output('selection-stats', 'children'),
+            Output('chunks-selection-title-container', 'children'),
+            Output('chunks-selection-stats', 'children'),
             Output('text-chunks-container', 'children'),
             Output('explore-page-indicator', 'children'),
             Output('explore-page-indicator-bottom', 'children'),
@@ -412,8 +440,10 @@ def register_explore_callbacks(app):
         PAGE_SIZE = 10
 
         if not selection_data or not filtered_data:
-            return ('Select a taxonomic element', 
-                    'No taxonomic element selected', 
+            title_placeholder = html.H4("Select a taxonomic element", id="text-chunks-anchor", style={"scroll-margin-top": "100px"})
+            stats_placeholder = html.Div("No taxonomic element selected")
+            return (title_placeholder, 
+                    stats_placeholder, 
                     [],
                     "Page 1", 
                     "Page 1", 
@@ -421,8 +451,10 @@ def register_explore_callbacks(app):
 
         full_df = pd.DataFrame(filtered_data)
         if full_df.empty:
-            return ('No data for selection', 
-                    "No chunks available", 
+            title_empty = html.H4("No data for selection", id="text-chunks-anchor", style={"scroll-margin-top": "100px"})
+            stats_empty = html.Div("No chunks available")
+            return (title_empty, 
+                    stats_empty, 
                     [],
                     "Page 1", 
                     "Page 1", 
@@ -453,7 +485,8 @@ def register_explore_callbacks(app):
         page_df = full_df.iloc[start_idx:end_idx]
         
         # Create title with more emphasis - use the consistent styling from the screenshot
-        title = html.H4(f"{level.capitalize()}: {selected}", className="selection-title")
+        # This is where the Back to Text Chunks should go - at the top of the loaded chunks
+        title = html.H4(f"{level.capitalize()}: {selected}", id="text-chunks-anchor", className="selection-title", style={"scroll-margin-top": "100px"})
         
         # Create stats with better formatting
         stats = html.Div([
@@ -512,7 +545,14 @@ def register_explore_callbacks(app):
         
         df = pd.DataFrame(filtered_data)
         filename = get_unique_filename("data_export.csv")
-        return dcc.send_data_frame(df, filename, index=False)
+        
+        # Create a string buffer, write the CSV, and encode as bytes
+        from io import StringIO
+        str_buffer = StringIO()
+        df.to_csv(str_buffer, index=False)
+        
+        # Use send_string instead of send_data_frame
+        return dcc.send_string(str_buffer.getvalue(), filename)
 
     # Callback for JSON download
     @app.callback(
@@ -536,4 +576,10 @@ def register_explore_callbacks(app):
             return dash.no_update
         
         filename = get_unique_filename("data_export.json")
-        return dcc.send_dict(filtered_data, filename)
+        
+        # Convert to JSON string
+        import json
+        json_str = json.dumps(filtered_data)
+        
+        # Use send_string for JSON
+        return dcc.send_string(json_str, filename)

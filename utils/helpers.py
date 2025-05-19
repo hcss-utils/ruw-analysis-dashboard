@@ -15,6 +15,22 @@ import dash_bootstrap_components as dbc
 from dash import html
 
 
+def format_number(number):
+    """
+    Format a number with thousands separators.
+    
+    Args:
+        number: Number to format
+        
+    Returns:
+        str: Formatted number with thousands separators
+    """
+    try:
+        return f"{int(number):,}"
+    except (ValueError, TypeError):
+        return str(number)
+
+
 def get_unique_filename(base_name: str) -> str:
     """
     Generate a unique filename with timestamp.
