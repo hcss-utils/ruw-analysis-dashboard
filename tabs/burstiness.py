@@ -2,24 +2,34 @@
 # coding: utf-8
 
 """
-Burstiness tab layout and callbacks for the dashboard.
+Enhanced Burstiness tab layout and callbacks for the dashboard.
 This tab provides analysis of bursts in taxonomic elements, keywords, and named entities,
 using Kleinberg's burst detection algorithm to identify significant spikes in frequency,
-visualized in a CiteSpace-inspired style.
+visualized in CiteSpace-inspired styles with additional features:
+
+- Algorithm parameter controls for fine-tuning
+- Concordance table integration for document exploration
+- Enhanced visualizations (CiteSpace timeline, co-occurrence network, predictions)
+- Historical event management and annotation
+- Document linking and cross-referencing
+- Interactive callbacks for all new functionality
 """
 
 import logging
+import json
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Union, Any
+from typing import Dict, List, Optional, Union, Any, Tuple
+from urllib.parse import quote
 
 import pandas as pd
 import numpy as np
 import dash
 from dash import html, dcc, callback_context
-from dash.dependencies import Input, Output, State
+from dash.dependencies import Input, Output, State, ALL, MATCH
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 import plotly.express as px
+from dash.exceptions import PreventUpdate
 
 import sys
 import os
@@ -27,23 +37,46 @@ import os
 # Add the project root to the path to import modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database.data_fetchers_freshness import get_burst_data_for_periods, calculate_burst_summaries
-from database.data_fetchers import fetch_all_databases, fetch_date_range
+from database.data_fetchers import fetch_all_databases, fetch_date_range, get_documents_by_keywords
+from database.connection import get_engine
 from components.layout import create_filter_card
+from components.cards import create_collapsible_card
 from config import (
     LANGUAGE_OPTIONS,
     SOURCE_TYPE_OPTIONS,
     FRESHNESS_FILTER_OPTIONS as BURSTINESS_FILTER_OPTIONS
+)
+from utils.burst_detection import (
+    kleinberg_burst_detection,
+    kleinberg_multi_state_burst_detection,
+    detect_burst_co_occurrences,
+    validate_bursts_statistically,
+    find_cascade_patterns
 )
 from visualizations.bursts import (
     create_burst_heatmap,
     create_burst_summary_chart,
     create_burst_timeline,
     create_burst_comparison_chart,
-    create_citespace_timeline
+    create_citespace_timeline,
+    create_enhanced_citespace_timeline,
+    create_co_occurrence_network,
+    create_predictive_visualization,
+    load_historical_events,
+    prepare_document_links
 )
 
 # Theme colors for consistency
 THEME_BLUE = "#13376f"  # Main dashboard theme color
+TAXONOMY_COLOR = '#4caf50'  # Green for taxonomy
+KEYWORD_COLOR = '#2196f3'   # Blue for keywords
+ENTITY_COLOR = '#ff9800'    # Orange for entities
+
+# Global variables to store data
+global_burst_data = {}
+global_burst_summaries = {}
+global_document_links = {}
+global_historical_events = []
 
 # Named entity types for filtering
 NAMED_ENTITY_TYPES = [
@@ -69,13 +102,59 @@ TAXONOMY_LEVEL_OPTIONS = [
     {'label': 'Sub-subcategories', 'value': 'sub_subcategory'}
 ]
 
+# Algorithm parameter options
+ALGORITHM_OPTIONS = [
+    {'label': 'Basic Kleinberg (2-state)', 'value': 'basic'},
+    {'label': 'Multi-state Kleinberg', 'value': 'multi_state'},
+    {'label': 'Statistical Validation', 'value': 'statistical'}
+]
+
+# Default historical events
+DEFAULT_HISTORICAL_EVENTS = [
+    {
+        "date": "2022-02-24",
+        "period": "Feb 2022", 
+        "event": "Russian Invasion of Ukraine Begins",
+        "impact": 1.0,
+        "description": "Russia launches a full-scale invasion of Ukraine."
+    },
+    {
+        "date": "2022-04-03",
+        "period": "Apr 2022",
+        "event": "Bucha Massacre Revealed",
+        "impact": 0.9,
+        "description": "Discovery of civilian killings in Bucha after Russian withdrawal."
+    },
+    {
+        "date": "2022-09-21",
+        "period": "Sep 2022",
+        "event": "Russian Mobilization",
+        "impact": 0.8,
+        "description": "Russia announces partial military mobilization."
+    },
+    {
+        "date": "2023-06-06",
+        "period": "Jun 2023",
+        "event": "Kakhovka Dam Collapse",
+        "impact": 0.7,
+        "description": "Massive flooding after the collapse of the Kakhovka Dam."
+    },
+    {
+        "date": "2023-08-23",
+        "period": "Aug 2023",
+        "event": "Wagner Group Leader Death",
+        "impact": 0.6,
+        "description": "Yevgeny Prigozhin reportedly killed in plane crash."
+    }
+]
+
 
 def create_burstiness_tab_layout():
     """
-    Create the Burstiness tab layout.
+    Create the enhanced Burstiness tab layout with all advanced features.
     
     Returns:
-        html.Div: Burstiness tab layout
+        html.Div: Burstiness tab layout with all enhancements
     """
     # Get database options for filters
     db_options = [{'label': 'All Databases', 'value': 'ALL'}]
@@ -100,7 +179,31 @@ def create_burstiness_tab_layout():
                 className="ml-auto",
                 style={"display": "inline-block"}
             ),
-        ], style={"display": "flex", "align-items": "center", "margin-bottom": "20px"}),
+        ], style={"display": "flex", "align-items": "center", "margin-bottom": "20px"}, id="burstiness-top"),
+        
+        # Fixed-position "Back to Top" button (matches style from other tabs)
+        html.A(
+            html.Button(
+                "↑ Back to Tabs", 
+                id="burstiness-back-to-tabs-btn",
+                style={
+                    "position": "fixed", 
+                    "bottom": "20px", 
+                    "right": "20px", 
+                    "z-index": "9999",
+                    "background-color": THEME_BLUE,
+                    "color": "white",
+                    "font-weight": "bold",
+                    "border": "none",
+                    "border-radius": "4px",
+                    "padding": "10px 20px",
+                    "box-shadow": "0 4px 8px rgba(0,0,0,0.2)",
+                    "cursor": "pointer",
+                    "width": "200px"
+                }
+            ),
+            href="#burstiness-tabs"
+        ),
         
         # Filter Controls
         dbc.Card([
@@ -116,6 +219,163 @@ def create_burstiness_tab_layout():
                             value='month',
                             inline=True,
                             className="mb-3"
+                        ),
+                    ], width=6),
+                    # Algorithm selection
+                    dbc.Col([
+                        html.Label("Algorithm:"),
+                        dcc.RadioItems(
+                            id='burstiness-algorithm',
+                            options=ALGORITHM_OPTIONS,
+                            value='basic',
+                            inline=True,
+                            className="mb-3"
+                        ),
+                    ], width=6),
+                ]),
+                
+                # Algorithm parameters (collapsible)
+                dbc.Row([
+                    dbc.Col([
+                        dbc.Button(
+                            "Algorithm Parameters", 
+                            id="burstiness-algorithm-params-toggle",
+                            className="mb-3",
+                            color="info"
+                        ),
+                        dbc.Collapse(
+                            dbc.Card(
+                                dbc.CardBody([
+                                    dbc.Row([
+                                        # Basic algorithm parameters
+                                        dbc.Col([
+                                            html.Div([
+                                                html.Label("State Parameter (s):"),
+                                                dcc.Slider(
+                                                    id='burstiness-s-parameter',
+                                                    min=1.0,
+                                                    max=5.0,
+                                                    step=0.1,
+                                                    value=2.0,
+                                                    marks={i: str(i) for i in range(1, 6)},
+                                                    tooltip={"placement": "bottom", "always_visible": True}
+                                                ),
+                                                html.Small("Higher values = more stringent burst detection", 
+                                                         className="text-muted"),
+                                            ], id="basic-params"),
+                                        ], width=6),
+                                        
+                                        # Multi-state algorithm parameters
+                                        dbc.Col([
+                                            html.Div([
+                                                html.Label("Number of States:"),
+                                                dcc.Slider(
+                                                    id='burstiness-num-states',
+                                                    min=2,
+                                                    max=5,
+                                                    step=1,
+                                                    value=3,
+                                                    marks={i: str(i) for i in range(2, 6)},
+                                                    tooltip={"placement": "bottom", "always_visible": True}
+                                                ),
+                                                html.Label("Transition Cost (γ):", className="mt-2"),
+                                                dcc.Slider(
+                                                    id='burstiness-gamma-parameter',
+                                                    min=0.1,
+                                                    max=3.0,
+                                                    step=0.1,
+                                                    value=1.0,
+                                                    marks={i: str(i) for i in range(0, 4)},
+                                                    tooltip={"placement": "bottom", "always_visible": True}
+                                                ),
+                                                html.Small("Higher γ = harder to transition between states", 
+                                                         className="text-muted"),
+                                            ], id="multi-state-params"),
+                                        ], width=6),
+                                    ]),
+                                    
+                                    # Statistical validation parameters
+                                    dbc.Row([
+                                        dbc.Col([
+                                            html.Div([
+                                                html.Label("Confidence Level:"),
+                                                dcc.Slider(
+                                                    id='burstiness-confidence-level',
+                                                    min=0.8,
+                                                    max=0.99,
+                                                    step=0.01,
+                                                    value=0.95,
+                                                    marks={0.8: "80%", 0.9: "90%", 0.95: "95%", 0.99: "99%"},
+                                                    tooltip={"placement": "bottom", "always_visible": True}
+                                                ),
+                                                html.Label("Window Size:", className="mt-2"),
+                                                dcc.Slider(
+                                                    id='burstiness-window-size',
+                                                    min=2,
+                                                    max=10,
+                                                    step=1,
+                                                    value=5,
+                                                    marks={i: str(i) for i in range(2, 11, 2)},
+                                                    tooltip={"placement": "bottom", "always_visible": True}
+                                                ),
+                                                html.Small("Periods to consider for local baseline calculation", 
+                                                         className="text-muted"),
+                                            ], id="statistical-params"),
+                                        ], width=12),
+                                    ], className="mt-3"),
+                                ])
+                            ),
+                            id="burstiness-algorithm-params-collapse",
+                            is_open=False,
+                        ),
+                    ], width=12),
+                ]),
+                
+                dbc.Row([
+                    # Event Management (collapsible)
+                    dbc.Col([
+                        dbc.Button(
+                            "Historical Events", 
+                            id="burstiness-events-toggle",
+                            className="mb-3",
+                            color="danger"
+                        ),
+                        dbc.Collapse(
+                            dbc.Card(
+                                dbc.CardBody([
+                                    dbc.Row([
+                                        dbc.Col([
+                                            html.Label("Include Events in Visualizations:"),
+                                            dbc.Checklist(
+                                                id="burstiness-include-events",
+                                                options=[{'label': 'Show Historical Events', 'value': 'show_events'}],
+                                                value=['show_events'],
+                                                switch=True,
+                                            ),
+                                            html.Div([
+                                                html.Label("Manage Historical Events:"),
+                                                html.Div(
+                                                    id="burstiness-events-table-container",
+                                                    children=[
+                                                        # This will be populated by callback
+                                                        html.Div(id="burstiness-events-table")
+                                                    ],
+                                                    style={"maxHeight": "250px", "overflowY": "auto"}
+                                                ),
+                                                dbc.Button(
+                                                    "Add New Event", 
+                                                    id="burstiness-add-event-btn", 
+                                                    color="primary", 
+                                                    size="sm",
+                                                    className="mt-2"
+                                                ),
+                                            ]),
+                                        ], width=12),
+                                    ]),
+                                ])
+                            ),
+                            id="burstiness-events-collapse",
+                            is_open=False,
                         ),
                     ], width=12),
                 ]),
@@ -288,6 +548,68 @@ def create_burstiness_tab_layout():
                 ]),
                 
                 dbc.Row([
+                    # Visualization Options
+                    dbc.Col([
+                        dbc.Button(
+                            "Visualization Options", 
+                            id="burstiness-viz-options-toggle",
+                            className="mb-3",
+                            color="info"
+                        ),
+                        dbc.Collapse(
+                            dbc.Card(
+                                dbc.CardBody([
+                                    dbc.Row([
+                                        dbc.Col([
+                                            html.Label("Advanced Visualizations:"),
+                                            dbc.Checklist(
+                                                id="burstiness-viz-options",
+                                                options=[
+                                                    {'label': 'Show Co-occurrence Network', 'value': 'show_network'},
+                                                    {'label': 'Show Predictive Analysis', 'value': 'show_prediction'},
+                                                    {'label': 'Show Document Links', 'value': 'show_doc_links'}
+                                                ],
+                                                value=['show_network', 'show_prediction'],
+                                                inline=True
+                                            ),
+                                        ], width=6),
+                                        dbc.Col([
+                                            html.Label("Network Parameters:"),
+                                            html.Div([
+                                                html.Label("Min. Co-occurrence Strength:"),
+                                                dcc.Slider(
+                                                    id='burstiness-network-min-strength',
+                                                    min=0.1,
+                                                    max=0.9,
+                                                    step=0.1,
+                                                    value=0.3,
+                                                    marks={i/10: str(i/10) for i in range(1, 10)},
+                                                    tooltip={"placement": "bottom", "always_visible": True}
+                                                ),
+                                            ]),
+                                            html.Div([
+                                                html.Label("Prediction Periods:"),
+                                                dcc.Slider(
+                                                    id='burstiness-prediction-periods',
+                                                    min=1,
+                                                    max=5,
+                                                    step=1,
+                                                    value=2,
+                                                    marks={i: str(i) for i in range(1, 6)},
+                                                    tooltip={"placement": "bottom", "always_visible": True}
+                                                ),
+                                            ], className="mt-2"),
+                                        ], width=6),
+                                    ]),
+                                ])
+                            ),
+                            id="burstiness-viz-options-collapse",
+                            is_open=False,
+                        ),
+                    ], width=12),
+                ]),
+                
+                dbc.Row([
                     dbc.Col([
                         html.Br(),
                         dbc.Button('Run Burstiness Analysis', id='burstiness-button', 
@@ -298,14 +620,47 @@ def create_burstiness_tab_layout():
             ])
         ], className="mb-4"),
         
-        # Loading spinner for the entire results section
+        # Loading spinner for the entire results section - using "default" type to match other tabs
         dcc.Loading(
             id="loading-burstiness-results",
-            type="circle",
+            type="default",
             color=THEME_BLUE,
             children=[
                 # Results section (initially hidden)
                 html.Div([
+                    # Add the document concordance section (initially hidden)
+                    html.Div([
+                        html.H4("Document Concordance", className="mt-3"),
+                        html.P(
+                            "This table shows document occurrences related to the selected burst element. "
+                            "Click on table rows to view document content."
+                        ),
+                        dbc.Card([
+                            dbc.CardBody([
+                                # Dynamic concordance table will be inserted here
+                                html.Div(id="burstiness-concordance-table"),
+                                # Pagination for concordance table
+                                dbc.Pagination(
+                                    id="burstiness-concordance-pagination",
+                                    max_value=1,  # Will be updated by callback
+                                    first_last=True,
+                                    previous_next=True,
+                                    style={"marginTop": "10px", "justifyContent": "center"}
+                                ),
+                            ])
+                        ]),
+                        # Document preview modal
+                        dbc.Modal([
+                            dbc.ModalHeader(dbc.ModalTitle("Document Preview"), close_button=True),
+                            dbc.ModalBody([
+                                html.Div(id="burstiness-document-preview")
+                            ]),
+                            dbc.ModalFooter(
+                                dbc.Button("Close", id="burstiness-close-preview", className="ms-auto")
+                            ),
+                        ], id="burstiness-document-modal", size="lg"),
+                    ], id="burstiness-concordance-section", style={"display": "none"}),
+                    
                     dbc.Tabs([
                         # Overview tab with comparison across data types
                         dbc.Tab([
@@ -316,7 +671,7 @@ def create_burstiness_tab_layout():
                                         html.P("This chart shows the elements with the highest burst intensity for each data type."),
                                         dcc.Loading(
                                             id="loading-comparison-chart",
-                                            type="circle",
+                                            type="default",
                                             color=THEME_BLUE,
                                             children=[dcc.Graph(id='burstiness-comparison-chart', style={'height': '500px'})]
                                         ),
@@ -325,11 +680,56 @@ def create_burstiness_tab_layout():
                                 
                                 dbc.Row([
                                     dbc.Col([
+                                        html.H4("Enhanced CiteSpace-Style Burst Timeline", className="mt-3"),
+                                        html.P("This visualization shows bursts as horizontal segments with varying thickness based on intensity, with historical events and document links."),
+                                        dcc.Loading(
+                                            id="loading-enhanced-citespace-timeline",
+                                            type="default",
+                                            color=THEME_BLUE,
+                                            children=[dcc.Graph(id='burstiness-enhanced-citespace-timeline', style={'height': '600px'})]
+                                        )
+                                    ], width=12),
+                                ]),
+                                
+                                # Co-occurrence network visualization (initially hidden)
+                                html.Div([
+                                    dbc.Row([
+                                        dbc.Col([
+                                            html.H4("Burst Co-occurrence Network", className="mt-3"),
+                                            html.P("This network visualization shows relationships between elements that burst together."),
+                                            dcc.Loading(
+                                                id="loading-co-occurrence-network",
+                                                type="default",
+                                                color=THEME_BLUE,
+                                                children=[dcc.Graph(id='burstiness-co-occurrence-network', style={'height': '600px'})]
+                                            )
+                                        ], width=12),
+                                    ]),
+                                ], id="burstiness-network-container", style={"display": "none"}),
+                                
+                                # Predictive visualization (initially hidden)
+                                html.Div([
+                                    dbc.Row([
+                                        dbc.Col([
+                                            html.H4("Burst Trend Prediction", className="mt-3"),
+                                            html.P("This visualization predicts future burst trends based on historical patterns."),
+                                            dcc.Loading(
+                                                id="loading-predictive-visualization",
+                                                type="default",
+                                                color=THEME_BLUE,
+                                                children=[dcc.Graph(id='burstiness-predictive-visualization', style={'height': '600px'})]
+                                            )
+                                        ], width=12),
+                                    ]),
+                                ], id="burstiness-prediction-container", style={"display": "none"}),
+                                
+                                dbc.Row([
+                                    dbc.Col([
                                         html.H4("CiteSpace-Style Burst Timeline", className="mt-3"),
                                         html.P("This visualization shows bursts as horizontal segments with varying thickness based on intensity, similar to CiteSpace."),
                                         dcc.Loading(
                                             id="loading-citespace-timeline",
-                                            type="circle",
+                                            type="default",
                                             color=THEME_BLUE,
                                             children=[dcc.Graph(id='burstiness-citespace-timeline', style={'height': '600px'})]
                                         )
@@ -342,7 +742,7 @@ def create_burstiness_tab_layout():
                                         html.P("This timeline shows how the top elements from each data type change in burst intensity over time."),
                                         dcc.Loading(
                                             id="loading-overview-timeline",
-                                            type="circle",
+                                            type="default",
                                             color=THEME_BLUE,
                                             children=[dcc.Graph(id='burstiness-overview-timeline', style={'height': '500px'})]
                                         )
@@ -360,7 +760,7 @@ def create_burstiness_tab_layout():
                                         html.P("This chart shows the taxonomy elements with the highest burst intensity."),
                                         dcc.Loading(
                                             id="loading-taxonomy-chart",
-                                            type="circle",
+                                            type="default",
                                             color=THEME_BLUE,
                                             children=[dcc.Graph(id='taxonomy-burst-chart', style={'height': '600px'})]
                                         )
@@ -372,7 +772,7 @@ def create_burstiness_tab_layout():
                                         html.P("This timeline shows how the burst intensity of top taxonomy elements changes over time."),
                                         dcc.Loading(
                                             id="loading-taxonomy-timeline",
-                                            type="circle",
+                                            type="default",
                                             color=THEME_BLUE,
                                             children=[dcc.Graph(id='taxonomy-burst-timeline', style={'height': '500px'})]
                                         )
@@ -390,7 +790,7 @@ def create_burstiness_tab_layout():
                                         html.P("This chart shows the keywords with the highest burst intensity."),
                                         dcc.Loading(
                                             id="loading-keyword-chart",
-                                            type="circle",
+                                            type="default",
                                             color=THEME_BLUE,
                                             children=[dcc.Graph(id='keyword-burst-chart', style={'height': '600px'})]
                                         )
@@ -402,7 +802,7 @@ def create_burstiness_tab_layout():
                                         html.P("This timeline shows how the burst intensity of top keywords changes over time."),
                                         dcc.Loading(
                                             id="loading-keyword-timeline",
-                                            type="circle",
+                                            type="default",
                                             color=THEME_BLUE,
                                             children=[dcc.Graph(id='keyword-burst-timeline', style={'height': '500px'})]
                                         )
@@ -420,7 +820,7 @@ def create_burstiness_tab_layout():
                                         html.P("This chart shows the named entities with the highest burst intensity."),
                                         dcc.Loading(
                                             id="loading-entity-chart",
-                                            type="circle",
+                                            type="default",
                                             color=THEME_BLUE,
                                             children=[dcc.Graph(id='entity-burst-chart', style={'height': '600px'})]
                                         )
@@ -432,7 +832,7 @@ def create_burstiness_tab_layout():
                                         html.P("This timeline shows how the burst intensity of top named entities changes over time."),
                                         dcc.Loading(
                                             id="loading-entity-timeline",
-                                            type="circle",
+                                            type="default",
                                             color=THEME_BLUE,
                                             children=[dcc.Graph(id='entity-burst-timeline', style={'height': '500px'})]
                                         )
@@ -440,10 +840,82 @@ def create_burstiness_tab_layout():
                                 ]),
                             ], className="p-4")
                         ], label="Named Entities", tab_id="entities")
-                    ], id="burstiness-tabs")
+                    ], id="burstiness-tabs"),
+                    
+                    # Download buttons - matches the style from Search tab
+                    html.Div([
+                        dbc.Button("Download CSV", id="burstiness-btn-csv", color="success", className="me-2"),
+                        dbc.Button("Download JSON", id="burstiness-btn-json", color="success"),
+                        dbc.Button("Export Events", id="burstiness-btn-export-events", color="success", className="ms-2"),
+                        # Hidden download components
+                        dcc.Download(id="burstiness-download-csv"),
+                        dcc.Download(id="burstiness-download-json"),
+                        dcc.Download(id="burstiness-download-events"),
+                    ], id='burstiness-download-buttons', style={'margin-top': '20px', 'text-align': 'center', 'display': 'none'})
                 ], id="burstiness-results", style={"display": "none"})
             ]
         ),
+        
+        # Event management modal
+        dbc.Modal([
+            dbc.ModalHeader(dbc.ModalTitle("Add Historical Event")),
+            dbc.ModalBody([
+                dbc.Form([
+                    dbc.Row([
+                        dbc.Col([
+                            dbc.Label("Event Name"),
+                            dbc.Input(id="burstiness-event-name", type="text", placeholder="Enter event name"),
+                        ], width=12),
+                    ]),
+                    dbc.Row([
+                        dbc.Col([
+                            dbc.Label("Event Date"),
+                            dbc.Input(id="burstiness-event-date", type="date"),
+                        ], width=6),
+                        dbc.Col([
+                            dbc.Label("Period"),
+                            dbc.Input(id="burstiness-event-period", type="text", placeholder="e.g., Feb 2023"),
+                        ], width=6),
+                    ], className="mt-3"),
+                    dbc.Row([
+                        dbc.Col([
+                            dbc.Label("Event Description"),
+                            dbc.Textarea(id="burstiness-event-description", placeholder="Describe the event"),
+                        ], width=12),
+                    ], className="mt-3"),
+                    dbc.Row([
+                        dbc.Col([
+                            dbc.Label("Event Impact (0.1-1.0)"),
+                            dcc.Slider(
+                                id='burstiness-event-impact',
+                                min=0.1,
+                                max=1.0,
+                                step=0.1,
+                                value=0.5,
+                                marks={i/10: str(i/10) for i in range(1, 11)},
+                                tooltip={"placement": "bottom", "always_visible": True}
+                            ),
+                        ], width=12),
+                    ], className="mt-3"),
+                ]),
+                dbc.Alert(
+                    "Please fill in all required fields",
+                    id="burstiness-event-alert",
+                    color="danger",
+                    dismissable=True,
+                    is_open=False,
+                    className="mt-3"
+                ),
+            ]),
+            dbc.ModalFooter([
+                dbc.Button(
+                    "Close", id="burstiness-close-event-modal", className="me-2"
+                ),
+                dbc.Button(
+                    "Save Event", id="burstiness-save-event", color="success"
+                )
+            ]),
+        ], id="burstiness-event-modal", is_open=False),
         
         # About modal for Burstiness
         dbc.Modal([
@@ -492,6 +964,18 @@ def create_burstiness_tab_layout():
                 html.H5("Understanding the Visualizations:", style={"margin-top": "20px", "color": THEME_BLUE}),
                 html.Ul([
                     html.Li([
+                        html.Strong("Enhanced CiteSpace Timeline:"), 
+                        " Shows bursts with historical events and document links for context."
+                    ]),
+                    html.Li([
+                        html.Strong("Co-occurrence Network:"), 
+                        " Network visualization showing which elements burst together."
+                    ]),
+                    html.Li([
+                        html.Strong("Trend Prediction:"), 
+                        " Uses historical data to predict future burst patterns."
+                    ]),
+                    html.Li([
                         html.Strong("CiteSpace-Style Timeline:"), 
                         " Shows bursts as horizontal bars where the thickness indicates intensity, similar to CiteSpace's citation burst diagrams."
                     ]),
@@ -522,6 +1006,22 @@ def create_burstiness_tab_layout():
                     html.Li([
                         html.Strong("Patterns Across Data Types:"), 
                         " Look for related bursts across taxonomy elements, keywords, and named entities to identify comprehensive trends."
+                    ]),
+                ]),
+                
+                html.H5("Advanced Features:", style={"margin-top": "20px", "color": THEME_BLUE}),
+                html.Ul([
+                    html.Li([
+                        html.Strong("Document Concordance:"), 
+                        " Explore documents related to burst elements."
+                    ]),
+                    html.Li([
+                        html.Strong("Historical Events:"), 
+                        " Manage and display significant events on the timeline."
+                    ]),
+                    html.Li([
+                        html.Strong("Algorithm Parameters:"), 
+                        " Fine-tune burst detection sensitivity and behavior."
                     ]),
                 ]),
                 
@@ -582,6 +1082,42 @@ def register_burstiness_callbacks(app):
         if n:
             return not is_open
         return is_open
+        
+    # Callback for algorithm parameters collapse
+    @app.callback(
+        Output("burstiness-algorithm-params-collapse", "is_open"),
+        [Input("burstiness-algorithm-params-toggle", "n_clicks")],
+        [State("burstiness-algorithm-params-collapse", "is_open")],
+        prevent_initial_call=True
+    )
+    def toggle_algorithm_params_collapse(n, is_open):
+        if n:
+            return not is_open
+        return is_open
+    
+    # Callback for visualization options collapse
+    @app.callback(
+        Output("burstiness-viz-options-collapse", "is_open"),
+        [Input("burstiness-viz-options-toggle", "n_clicks")],
+        [State("burstiness-viz-options-collapse", "is_open")],
+        prevent_initial_call=True
+    )
+    def toggle_viz_options_collapse(n, is_open):
+        if n:
+            return not is_open
+        return is_open
+        
+    # Callback for events collapse
+    @app.callback(
+        Output("burstiness-events-collapse", "is_open"),
+        [Input("burstiness-events-toggle", "n_clicks")],
+        [State("burstiness-events-collapse", "is_open")],
+        prevent_initial_call=True
+    )
+    def toggle_events_collapse(n, is_open):
+        if n:
+            return not is_open
+        return is_open
     
     # Callbacks to toggle visibility of data type-specific options
     @app.callback(
@@ -610,6 +1146,34 @@ def register_burstiness_callbacks(app):
         if value and 'named_entities' in value:
             return {"display": "block"}
         return {"display": "none"}
+        
+    # Callbacks to toggle visibility of algorithm-specific parameters
+    @app.callback(
+        [
+            Output("basic-params", "style"),
+            Output("multi-state-params", "style"),
+            Output("statistical-params", "style")
+        ],
+        [Input("burstiness-algorithm", "value")]
+    )
+    def toggle_algorithm_options(algorithm_value):
+        basic_style = {"display": "block" if algorithm_value == "basic" else "none"}
+        multi_state_style = {"display": "block" if algorithm_value == "multi_state" else "none"}
+        statistical_style = {"display": "block" if algorithm_value == "statistical" else "none"}
+        return basic_style, multi_state_style, statistical_style
+        
+    # Callback to toggle visibility of advanced visualization containers
+    @app.callback(
+        [
+            Output("burstiness-network-container", "style"),
+            Output("burstiness-prediction-container", "style")
+        ],
+        [Input("burstiness-viz-options", "value")]
+    )
+    def toggle_advanced_visualizations(viz_options):
+        network_style = {"display": "block" if viz_options and "show_network" in viz_options else "none"}
+        prediction_style = {"display": "block" if viz_options and "show_prediction" in viz_options else "none"}
+        return network_style, prediction_style
     
     # Callback to show/hide tabs based on data type selection
     @app.callback(
@@ -635,17 +1199,22 @@ def register_burstiness_callbacks(app):
         [
             # Show/hide results
             Output('burstiness-results', 'style'),
+            Output('burstiness-download-buttons', 'style'),
             
             # Update visualizations
             Output('burstiness-comparison-chart', 'figure'),
-            Output('burstiness-citespace-timeline', 'figure'),  # New CiteSpace timeline
+            Output('burstiness-citespace-timeline', 'figure'),  # Regular CiteSpace timeline
             Output('burstiness-overview-timeline', 'figure'),
             Output('taxonomy-burst-chart', 'figure'),
             Output('taxonomy-burst-timeline', 'figure'),
             Output('keyword-burst-chart', 'figure'),
             Output('keyword-burst-timeline', 'figure'),
             Output('entity-burst-chart', 'figure'),
-            Output('entity-burst-timeline', 'figure')
+            Output('entity-burst-timeline', 'figure'),
+            # Enhanced visualizations
+            Output('burstiness-enhanced-citespace-timeline', 'figure'),
+            Output('burstiness-co-occurrence-network', 'figure'),
+            Output('burstiness-predictive-visualization', 'figure')
         ],
         [Input('burstiness-button', 'n_clicks')],
         [
@@ -667,7 +1236,23 @@ def register_burstiness_callbacks(app):
             State('burstiness-keywords-top-n', 'value'),
             State('burstiness-include-entities', 'value'),
             State('burstiness-entity-types', 'value'),
-            State('burstiness-entities-top-n', 'value')
+            State('burstiness-entities-top-n', 'value'),
+            
+            # Algorithm parameters
+            State('burstiness-algorithm', 'value'),
+            State('burstiness-s-parameter', 'value'),
+            State('burstiness-num-states', 'value'),
+            State('burstiness-gamma-parameter', 'value'),
+            State('burstiness-confidence-level', 'value'),
+            State('burstiness-window-size', 'value'),
+            
+            # Visualization options
+            State('burstiness-viz-options', 'value'),
+            State('burstiness-network-min-strength', 'value'),
+            State('burstiness-prediction-periods', 'value'),
+            
+            # Event options
+            State('burstiness-include-events', 'value')
         ]
     )
     def update_burstiness_analysis(
@@ -675,7 +1260,10 @@ def register_burstiness_callbacks(app):
         period,
         language, database, source_type, start_date, end_date, filter_value,
         include_taxonomy, taxonomy_level, include_keywords, keywords_top_n,
-        include_entities, entity_types, entities_top_n
+        include_entities, entity_types, entities_top_n,
+        algorithm, s_parameter, num_states, gamma_parameter, confidence_level, window_size,
+        viz_options, network_min_strength, prediction_periods,
+        include_events
     ):
         """
         Update burstiness analysis visualizations based on user selections.
@@ -693,14 +1281,24 @@ def register_burstiness_callbacks(app):
             include_entities: Whether to include named entities
             entity_types: Types of named entities to include
             entities_top_n: Number of top entities to include
+            algorithm: Burst detection algorithm to use (basic, multi_state, statistical)
+            s_parameter: State parameter for basic algorithm
+            num_states: Number of states for multi-state algorithm
+            gamma_parameter: Transition cost parameter for multi-state algorithm
+            confidence_level: Confidence level for statistical validation
+            window_size: Window size for statistical validation
+            viz_options: Advanced visualization options
+            network_min_strength: Minimum strength for co-occurrence network
+            prediction_periods: Number of periods to predict
+            include_events: Whether to include historical events in visualizations
             
         Returns:
-            tuple: Updated visualization figures
+            tuple: Updated visualization figures including enhanced visualizations
         """
         if not n_clicks:
             # Initial state - return empty visualizations
             empty_fig = go.Figure().update_layout(title="No data to display yet")
-            return {'display': 'none'}, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig
+            return {'display': 'none'}, {'display': 'none'}, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig
         
         logging.info(f"Running burstiness analysis with period={period}, filter={filter_value}")
         
@@ -727,7 +1325,7 @@ def register_burstiness_callbacks(app):
                     font=dict(size=16)
                 )]
             )
-            return {'display': 'block'}, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig
+            return {'display': 'block'}, {'display': 'block'}, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig
         
         # Build filter settings
         filter_settings = {
@@ -980,4 +1578,560 @@ def register_burstiness_callbacks(app):
             entity_burst_fig = empty_fig
             entity_timeline_fig = empty_fig
         
-        return {'display': 'block'}, comparison_fig, citespace_timeline_fig, overview_timeline_fig, taxonomy_burst_fig, taxonomy_timeline_fig, keyword_burst_fig, keyword_timeline_fig, entity_burst_fig, entity_timeline_fig
+        # Show the download buttons with the results
+        download_style = {'margin-top': '20px', 'text-align': 'center', 'display': 'block'}
+        
+        # Apply the selected algorithm 
+        processed_burst_data = {}
+        for data_type, elements in burst_data.items():
+            processed_burst_data[data_type] = {}
+            for element, df in elements.items():
+                if df.empty:
+                    continue
+                    
+                # Apply the selected burst detection algorithm
+                if algorithm == 'basic':
+                    processed_burst_data[data_type][element] = kleinberg_burst_detection(
+                        df, s=s_parameter
+                    )
+                elif algorithm == 'multi_state':
+                    processed_burst_data[data_type][element] = kleinberg_multi_state_burst_detection(
+                        df, num_states=num_states, gamma=gamma_parameter
+                    )
+                elif algorithm == 'statistical':
+                    processed_burst_data[data_type][element] = validate_bursts_statistically(
+                        df, confidence_level=confidence_level, window_size=window_size
+                    )
+                    # Map stat_burst_intensity to burst_intensity for compatibility
+                    if 'stat_burst_intensity' in processed_burst_data[data_type][element].columns:
+                        processed_burst_data[data_type][element]['burst_intensity'] = processed_burst_data[data_type][element]['stat_burst_intensity']
+                else:
+                    # Fallback to original data
+                    processed_burst_data[data_type][element] = df
+        
+        # Generate enhanced visualizations
+        # 1. Enhanced CiteSpace timeline with events
+        enhanced_timeline_data = []
+        for data_type, elements in processed_burst_data.items():
+            prefix = "T: " if data_type == 'taxonomy' else "K: " if data_type == 'keywords' else "E: "
+            for element, df in elements.items():
+                if not df.empty and 'period' in df.columns and 'burst_intensity' in df.columns:
+                    qualified_name = prefix + element
+                    for _, row in df.iterrows():
+                        enhanced_timeline_data.append({
+                            'element': qualified_name,
+                            'period': row['period'],
+                            'burst_intensity': row['burst_intensity']
+                        })
+        
+        # Convert to DataFrame
+        if enhanced_timeline_data:
+            enhanced_timeline_df = pd.DataFrame(enhanced_timeline_data)
+            
+            # Determine if events should be included
+            historical_events = None
+            if include_events and 'show_events' in (include_events or []):
+                global global_historical_events
+                historical_events = global_historical_events
+            
+            # Generate document links
+            global global_document_links
+            document_links = None
+            if viz_options and 'show_doc_links' in viz_options:
+                document_links = prepare_document_links(processed_burst_data)
+                global_document_links = document_links
+            
+            # Create enhanced timeline
+            enhanced_citespace_fig = create_enhanced_citespace_timeline(
+                enhanced_timeline_df,
+                historical_events=historical_events,
+                document_links=document_links,
+                title=f"Enhanced CiteSpace Timeline (Last 10 {period}s)"
+            )
+        else:
+            enhanced_citespace_fig = go.Figure().update_layout(
+                title="No data available for enhanced timeline"
+            )
+            
+        # 2. Co-occurrence network
+        if viz_options and 'show_network' in viz_options:
+            # Detect co-occurrences
+            co_occurrences = detect_burst_co_occurrences(
+                processed_burst_data,
+                min_burst_intensity=20.0,
+                min_periods=2
+            )
+            
+            # Create network visualization
+            network_fig = create_co_occurrence_network(
+                processed_burst_data,
+                min_burst_intensity=20.0,
+                min_periods=2,
+                min_strength=network_min_strength,
+                title=f"Burst Co-occurrence Network (Last 10 {period}s)"
+            )
+        else:
+            network_fig = go.Figure().update_layout(
+                title="Co-occurrence network visualization disabled"
+            )
+            
+        # 3. Predictive visualization
+        if viz_options and 'show_prediction' in viz_options:
+            prediction_fig = create_predictive_visualization(
+                processed_burst_data,
+                prediction_periods=prediction_periods,
+                confidence_level=0.9,
+                min_periods_for_prediction=4,
+                title=f"Burst Trend Prediction (Next {prediction_periods} {period}s)",
+                top_n=5
+            )
+        else:
+            prediction_fig = go.Figure().update_layout(
+                title="Predictive visualization disabled"
+            )
+        
+        # Store the burst data globally for download access
+        global global_burst_data
+        global global_burst_summaries
+        global_burst_data = processed_burst_data
+        global_burst_summaries = burst_summaries
+        
+        return {'display': 'block'}, download_style, comparison_fig, citespace_timeline_fig, overview_timeline_fig, taxonomy_burst_fig, taxonomy_timeline_fig, keyword_burst_fig, keyword_timeline_fig, entity_burst_fig, entity_timeline_fig, enhanced_citespace_fig, network_fig, prediction_fig
+    
+    # Make sure globals are initialized
+    if 'global_burst_data' not in globals():
+        global global_burst_data
+        global_burst_data = {}
+    if 'global_burst_summaries' not in globals():
+        global global_burst_summaries
+        global_burst_summaries = {}
+    if 'global_document_links' not in globals():
+        global global_document_links
+        global_document_links = {}
+    if 'global_historical_events' not in globals():
+        global global_historical_events
+        global_historical_events = DEFAULT_HISTORICAL_EVENTS.copy()
+        
+    # Event management callbacks
+    @app.callback(
+        Output("burstiness-event-modal", "is_open"),
+        [
+            Input("burstiness-add-event-btn", "n_clicks"), 
+            Input("burstiness-close-event-modal", "n_clicks"),
+            Input("burstiness-save-event", "n_clicks")
+        ],
+        [State("burstiness-event-modal", "is_open")],
+        prevent_initial_call=True
+    )
+    def toggle_event_modal(add_clicks, close_clicks, save_clicks, is_open):
+        ctx = callback_context
+        if not ctx.triggered:
+            return is_open
+        button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+        
+        if button_id == "burstiness-add-event-btn":
+            return True
+        elif button_id in ["burstiness-close-event-modal", "burstiness-save-event"]:
+            return False
+        return is_open
+    
+    @app.callback(
+        [
+            Output("burstiness-events-table", "children"),
+            Output("burstiness-event-alert", "is_open"),
+        ],
+        [
+            Input("burstiness-save-event", "n_clicks"),
+            Input("burstiness-button", "n_clicks"),  # Refresh when analysis runs
+        ],
+        [
+            State("burstiness-event-name", "value"),
+            State("burstiness-event-date", "value"),
+            State("burstiness-event-period", "value"),
+            State("burstiness-event-description", "value"),
+            State("burstiness-event-impact", "value"),
+            State("burstiness-event-alert", "is_open"),
+        ],
+        prevent_initial_call=True
+    )
+    def manage_events(save_clicks, run_clicks, event_name, event_date, event_period, 
+                     event_description, event_impact, alert_is_open):
+        global global_historical_events
+        
+        ctx = callback_context
+        if not ctx.triggered:
+            return dash.no_update, alert_is_open
+        
+        button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+        
+        if button_id == "burstiness-save-event" and save_clicks:
+            if not event_name or not event_date or not event_period:
+                return dash.no_update, True
+            
+            # Add new event to the global list
+            new_event = {
+                "date": event_date,
+                "period": event_period,
+                "event": event_name,
+                "impact": event_impact or 0.5,
+                "description": event_description or ""
+            }
+            
+            global_historical_events.append(new_event)
+        
+        # Create events table
+        table = html.Table(
+            # Header
+            [html.Tr([
+                html.Th("Event", style={"width": "30%"}),
+                html.Th("Period", style={"width": "20%"}),
+                html.Th("Impact", style={"width": "20%"}),
+                html.Th("Actions", style={"width": "30%"})
+            ])] +
+            # Rows
+            [html.Tr([
+                html.Td(event["event"]),
+                html.Td(event["period"]),
+                html.Td(f"{event['impact']:.1f}"),
+                html.Td([
+                    dbc.Button(
+                        "Remove", 
+                        id={"type": "burstiness-delete-event", "index": i},
+                        color="danger", 
+                        size="sm",
+                        className="me-1"
+                    )
+                ])
+            ]) for i, event in enumerate(global_historical_events)],
+            className="table table-striped table-hover table-sm"
+        )
+        
+        return table, False
+    
+    @app.callback(
+        Output("burstiness-events-table-container", "children"),
+        [Input({"type": "burstiness-delete-event", "index": ALL}, "n_clicks")],
+        [State({"type": "burstiness-delete-event", "index": ALL}, "id")],
+        prevent_initial_call=True
+    )
+    def delete_event(n_clicks, button_ids):
+        global global_historical_events
+        
+        ctx = callback_context
+        if not ctx.triggered:
+            return dash.no_update
+        
+        # Find which button was clicked
+        button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+        button_data = json.loads(button_id)
+        event_index = button_data['index']
+        
+        # Remove the event
+        if 0 <= event_index < len(global_historical_events):
+            global_historical_events.pop(event_index)
+        
+        # Recreate table
+        table = html.Table(
+            # Header
+            [html.Tr([
+                html.Th("Event", style={"width": "30%"}),
+                html.Th("Period", style={"width": "20%"}),
+                html.Th("Impact", style={"width": "20%"}),
+                html.Th("Actions", style={"width": "30%"})
+            ])] +
+            # Rows
+            [html.Tr([
+                html.Td(event["event"]),
+                html.Td(event["period"]),
+                html.Td(f"{event['impact']:.1f}"),
+                html.Td([
+                    dbc.Button(
+                        "Remove", 
+                        id={"type": "burstiness-delete-event", "index": i},
+                        color="danger", 
+                        size="sm",
+                        className="me-1"
+                    )
+                ])
+            ]) for i, event in enumerate(global_historical_events)],
+            className="table table-striped table-hover table-sm"
+        )
+        
+        return table
+    
+    # Export events callback
+    @app.callback(
+        Output("burstiness-download-events", "data"),
+        Input("burstiness-btn-export-events", "n_clicks"),
+        prevent_initial_call=True
+    )
+    def export_events(n_clicks):
+        if not n_clicks:
+            return dash.no_update
+            
+        # Create timestamp for filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"historical_events_{timestamp}.json"
+        
+        # Convert to JSON string
+        json_str = json.dumps(global_historical_events, indent=2)
+        
+        return dict(content=json_str, filename=filename)
+    
+    # Burst data download callbacks
+    @app.callback(
+        Output("burstiness-download-csv", "data"),
+        Input("burstiness-btn-csv", "n_clicks"),
+        prevent_initial_call=True
+    )
+    def download_burstiness_csv(n_clicks):
+        """
+        Handle CSV download for burstiness results.
+        
+        Args:
+            n_clicks: Button clicks
+            
+        Returns:
+            dict: Download data
+        """
+        if not n_clicks or not global_burst_summaries:
+            return dash.no_update
+        
+        # Combine all summaries
+        all_data = []
+        
+        for data_type, df in global_burst_summaries.items():
+            if not df.empty:
+                # Add data_type as a column
+                df_copy = df.copy()
+                df_copy['data_type'] = data_type
+                all_data.append(df_copy)
+        
+        if not all_data:
+            return dash.no_update
+            
+        # Combine into one dataframe
+        combined_df = pd.concat(all_data)
+        
+        # Create a timestamp for the filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"burstiness_data_{timestamp}.csv"
+        
+        # Create a string buffer, write the CSV, and encode as bytes
+        from io import StringIO
+        str_buffer = StringIO()
+        combined_df.to_csv(str_buffer, index=False)
+        
+        # Use send_string
+        return dcc.send_string(str_buffer.getvalue(), filename)
+    
+    @app.callback(
+        Output("burstiness-download-json", "data"),
+        Input("burstiness-btn-json", "n_clicks"),
+        prevent_initial_call=True
+    )
+    def download_burstiness_json(n_clicks):
+        """
+        Handle JSON download for burstiness results.
+        
+        Args:
+            n_clicks: Button clicks
+            
+        Returns:
+            dict: Download data
+        """
+        if not n_clicks or not global_burst_data:
+            return dash.no_update
+        
+        # Prepare the data for JSON serialization
+        json_data = {}
+        
+        for data_type, elements in global_burst_data.items():
+            json_data[data_type] = {}
+            
+            for element, df in elements.items():
+                if not df.empty:
+                    # Convert DataFrame to records format
+                    json_data[data_type][element] = df.to_dict('records')
+        
+        # Create a timestamp for the filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"burstiness_data_{timestamp}.json"
+        
+        # Convert to JSON string
+        import json
+        json_str = json.dumps(json_data)
+        
+        # Use send_string for JSON
+        return dcc.send_string(json_str, filename)
+        
+    # Concordance table and document linking callbacks
+    @app.callback(
+        Output("burstiness-concordance-section", "style"),
+        [
+            Input("burstiness-enhanced-citespace-timeline", "clickData"),
+            Input("burstiness-co-occurrence-network", "clickData")
+        ],
+        prevent_initial_call=True
+    )
+    def show_concordance_section(citespace_click, network_click):
+        """Show the concordance section when a visualization element is clicked."""
+        ctx = callback_context
+        if not ctx.triggered:
+            return {"display": "none"}
+            
+        # Show the section
+        return {"display": "block"}
+    
+    @app.callback(
+        [
+            Output("burstiness-concordance-table", "children"),
+            Output("burstiness-concordance-pagination", "max_value")
+        ],
+        [
+            Input("burstiness-enhanced-citespace-timeline", "clickData"),
+            Input("burstiness-co-occurrence-network", "clickData"),
+            Input("burstiness-concordance-pagination", "active_page")
+        ],
+        prevent_initial_call=True
+    )
+    def update_concordance_table(citespace_click, network_click, page):
+        """
+        Update the concordance table based on selected element from visualizations.
+        """
+        global global_document_links
+        
+        ctx = callback_context
+        if not ctx.triggered:
+            return dash.no_update, 1
+            
+        # Determine which visualization was clicked
+        trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+        clickData = citespace_click if trigger_id == "burstiness-enhanced-citespace-timeline" else network_click
+        
+        if not clickData:
+            return html.Div("Click on a visualization element to view related documents."), 1
+            
+        try:
+            # Extract element name from click data
+            if trigger_id == "burstiness-enhanced-citespace-timeline":
+                element_name = clickData['points'][0]['text'].split('<br>')[0].strip()
+                if 'Element:' in element_name:
+                    element_name = element_name.split('Element:')[1].strip()
+                elif '<b>' in element_name:
+                    element_name = element_name.replace('<b>', '').replace('</b>', '')
+            else:  # Network click
+                element_name = clickData['points'][0]['text']
+                if ':' in element_name:
+                    element_name = element_name.split(':', 1)[1].strip()
+            
+            # Default pagination values
+            items_per_page = 10
+            if not page:
+                page = 1
+                
+            # Query for documents containing this element
+            # This is a placeholder that would need to be connected to your actual database
+            # For demo, we'll generate mock data if we don't have real links
+            if element_name not in global_document_links:
+                mock_docs = []
+                for i in range(25):  # 25 mock documents
+                    doc_id = 10000 + i
+                    mock_docs.append({
+                        'id': doc_id,
+                        'title': f"Document related to {element_name} - #{i+1}",
+                        'date': (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d'),
+                        'preview': f"This is a sample document that mentions {element_name} multiple times..." 
+                                  f"The document continues with information about {element_name}."
+                    })
+                global_document_links[element_name] = mock_docs
+            
+            documents = global_document_links[element_name]
+            
+            # Calculate pagination
+            total_pages = (len(documents) + items_per_page - 1) // items_per_page
+            start_idx = (page - 1) * items_per_page
+            end_idx = min(start_idx + items_per_page, len(documents))
+            current_page_docs = documents[start_idx:end_idx]
+            
+            # Create table
+            table = html.Table(
+                # Header
+                [html.Thead(html.Tr([
+                    html.Th("ID"),
+                    html.Th("Title"),
+                    html.Th("Date"),
+                    html.Th("Actions")
+                ]))] +
+                # Body
+                [html.Tbody([
+                    html.Tr([
+                        html.Td(doc['id']),
+                        html.Td(doc['title']),
+                        html.Td(doc['date']),
+                        html.Td(
+                            dbc.Button(
+                                "View", 
+                                id={"type": "burstiness-view-doc", "index": doc['id']},
+                                color="primary", 
+                                size="sm"
+                            )
+                        )
+                    ]) for doc in current_page_docs
+                ])],
+                className="table table-striped table-hover"
+            )
+            
+            return table, total_pages
+            
+        except Exception as e:
+            return html.Div(f"Error loading concordance data: {str(e)}"), 1
+    
+    @app.callback(
+        [
+            Output("burstiness-document-modal", "is_open"),
+            Output("burstiness-document-preview", "children")
+        ],
+        [
+            Input({"type": "burstiness-view-doc", "index": ALL}, "n_clicks"),
+            Input("burstiness-close-preview", "n_clicks")
+        ],
+        [State({"type": "burstiness-view-doc", "index": ALL}, "id")],
+        prevent_initial_call=True
+    )
+    def show_document_preview(view_clicks, close_click, button_ids):
+        """Show document preview in modal when View button is clicked."""
+        ctx = callback_context
+        if not ctx.triggered:
+            return False, dash.no_update
+            
+        trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+        
+        if trigger_id == "burstiness-close-preview":
+            return False, dash.no_update
+            
+        # Find which document button was clicked
+        button_data = json.loads(trigger_id)
+        doc_id = button_data['index']
+        
+        try:
+            # This would typically be a database query
+            # For demonstration, we'll create mock content
+            doc_content = f"""
+            <h4>Document #{doc_id}</h4>
+            <p><strong>Date:</strong> {datetime.now().strftime('%Y-%m-%d')}</p>
+            <p><strong>Source:</strong> Sample Database</p>
+            <hr>
+            <p>This is the full content of document #{doc_id}. In a real implementation, 
+            this would contain the actual text of the document retrieved from your database.</p>
+            <p>The document would include all the relevant information about the selected topic, 
+            with the burst elements highlighted or emphasized in some way.</p>
+            <p>You could also include metadata, links to related documents, or other relevant 
+            information to help analysts understand the context.</p>
+            """
+            
+            return True, html.Div([
+                html.Div(dangerouslySetInnerHTML={'__html': doc_content})
+            ])
+        except Exception as e:
+            return True, html.Div(f"Error loading document: {str(e)}")
