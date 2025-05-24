@@ -1,0 +1,63 @@
+/* Browser compatibility fixes */
+
+/* Fix for slider component */
+.rc-slider {
+    touch-action: none;
+}
+
+/* Ensure proper loading of async components */
+._dash-loading {
+    position: fixed !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    width: 80px !important;
+    height: 80px !important;
+    border: 8px solid #f3f3f3 !important;
+    border-top: 8px solid #13376f !important;
+    z-index: 9999 !important;
+}
+
+/* Fix for Firefox slider */
+.rc-slider-handle {
+    touch-action: none;
+    -moz-user-select: none;
+}
+
+/* Fix for IE and Edge */
+.dash-graph {
+    min-height: 100px;
+}
+
+/* Make sure modals appear properly */
+.modal {
+    display: block;
+}
+
+/* Ensure consistent button appearance */
+.btn {
+    display: inline-block;
+}
+
+/* Fix for Safari */
+@supports (-webkit-appearance:none) {
+    .rc-slider-handle {
+        -webkit-transform: translate(-50%, -50%);
+    }
+}
+
+/* Ensure datepicker works */
+.DateInput_input {
+    padding: 2px 8px !important;
+    font-size: 0.9rem !important;
+}
+
+/* Ensure dropdowns are visible */
+.Select-menu-outer {
+    z-index: 10 !important;
+}
+
+/* Prevent zoom on mobile devices */
+.dash-tab, .rc-slider-handle, .dash-dropdown {
+    touch-action: manipulation;
+}

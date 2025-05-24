@@ -23,6 +23,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config import SOURCE_TYPE_FILTERS
 from database.connection import get_engine, is_demo_mode
 from utils.cache import cached
+from utils.keyword_mapping import map_keyword, map_keywords, remap_and_aggregate_frequencies, get_mapping_status
+from utils.search_parser import parse_boolean_query, validate_boolean_syntax
 
 # Sample data generation functions
 def _generate_sample_dates() -> Tuple[datetime, datetime]:
@@ -195,8 +197,11 @@ def _generate_sample_search_results(search_term: str) -> pd.DataFrame:
     # Use the sample category data and add search relevance
     df_categories = _generate_sample_category_data()
     
+    # Map search term using keyword mapping
+    mapped_search_term = map_keyword(search_term) or search_term
+    
     # Filter to relevant categories based on search term
-    search_term_lower = search_term.lower()
+    search_term_lower = mapped_search_term.lower()
     
     # Check each category for relevance to search term
     relevant_rows = []
@@ -713,10 +718,14 @@ def fetch_search_category_data(
     start_time = time.time()
     logging.info(f"Fetching search category data for {search_mode}: '{search_term}'")
     
+    # Apply keyword mapping to search term
+    mapped_search_term = map_keyword(search_term) or search_term
+    logging.info(f"Mapped search term '{search_term}' to '{mapped_search_term}'")
+    
     # Use demo data if in demo mode
     if is_demo_mode():
-        logging.info(f"Using demo data for fetch_search_category_data with term '{search_term}'")
-        df = _generate_sample_search_results(search_term)
+        logging.info(f"Using demo data for fetch_search_category_data with term '{mapped_search_term}'")
+        df = _generate_sample_search_results(mapped_search_term)
         
         # Apply filters to demo data if needed
         if selected_lang and selected_lang != 'ALL':
@@ -742,20 +751,78 @@ def fetch_search_category_data(
     
     params = {}
     
+    # Apply keyword mapping to search term
+    mapped_search_term = map_keyword(search_term) or search_term
+    logging.info(f"Mapped search term '{search_term}' to '{mapped_search_term}' for database query")
+    
     # Add search criteria based on mode
     if search_mode == 'keyword':
         # Use a simpler, more efficient query with an index hint
         search_condition = "AND (to_tsvector('english', dsc.content) @@ plainto_tsquery('english', :search_term) OR to_tsvector('english', t.chunk_level_reasoning) @@ plainto_tsquery('english', :search_term))"
-        params['search_term'] = search_term
+        params['search_term'] = mapped_search_term
     elif search_mode == 'boolean':
-        # Parse boolean search into PostgreSQL ts_query format
-        bool_query = search_term.replace(' AND ', ' & ').replace(' OR ', ' | ').replace(' NOT ', ' ! ')
-        search_condition = "AND (to_tsvector('english', dsc.content) @@ to_tsquery('english', :bool_query) OR to_tsvector('english', t.chunk_level_reasoning) @@ to_tsquery('english', :bool_query))"
-        params['bool_query'] = bool_query
+        # For performance, convert complex boolean queries to simpler keyword searches
+        # Check if query is simple (single terms with AND/OR)
+        simple_terms = mapped_search_term.replace(' AND ', ' ').replace(' OR ', ' ').replace(' NOT ', ' ')
+        word_count = len(simple_terms.split())
+        
+        if word_count <= 2:  # Enable boolean search for very simple queries only
+            # Validate and parse boolean search query
+            is_valid, error_msg = validate_boolean_syntax(mapped_search_term)
+            if not is_valid:
+                logging.error(f"Invalid boolean query: {error_msg}")
+                return pd.DataFrame()  # Return empty results for invalid queries
+            
+            # Parse boolean search into PostgreSQL ts_query format
+            bool_query, parse_success = parse_boolean_query(mapped_search_term)
+            if not parse_success:
+                logging.error(f"Failed to parse boolean query: {mapped_search_term}")
+                return pd.DataFrame()  # Return empty results for unparseable queries
+            
+            search_condition = "AND to_tsvector('english', dsc.content) @@ to_tsquery('english', :bool_query)"
+            params['bool_query'] = bool_query
+            logging.info(f"Using boolean search for simple query: {mapped_search_term}")
+        else:
+            # Complex query - fall back to keyword search for better performance
+            search_condition = "AND to_tsvector('english', dsc.content) @@ plainto_tsquery('english', :search_term)"
+            params['search_term'] = mapped_search_term
+            logging.info(f"Using keyword fallback for complex boolean query: {mapped_search_term}")
     elif search_mode == 'semantic':
-        # Fallback to faster text search
-        search_condition = "AND (to_tsvector('english', dsc.content) @@ plainto_tsquery('english', :search_term) OR to_tsvector('english', t.chunk_level_reasoning) @@ plainto_tsquery('english', :search_term))"
-        params['search_term'] = search_term
+        # Check if we have embeddings available for semantic search
+        try:
+            engine = get_engine()
+            with engine.connect() as conn:
+                # Get embedding for the search term by finding a similar chunk first
+                # We'll use the most similar existing chunk as a proxy for the search term
+                similarity_query = """
+                SELECT dsc.id, dsc.content, dsc.embedding
+                FROM document_section_chunk dsc
+                WHERE dsc.embedding IS NOT NULL 
+                AND to_tsvector('english', dsc.content) @@ plainto_tsquery('english', :search_term)
+                ORDER BY ts_rank(to_tsvector('english', dsc.content), plainto_tsquery('english', :search_term)) DESC
+                LIMIT 1
+                """
+                
+                result = conn.execute(text(similarity_query), {'search_term': mapped_search_term})
+                reference_chunk = result.fetchone()
+                
+                if reference_chunk:
+                    # Use vector similarity for semantic search
+                    search_condition = f"""
+                    AND (1 - (dsc.embedding <=> (SELECT embedding FROM document_section_chunk WHERE id = {reference_chunk[0]}))) > 0.3
+                    """
+                    logging.info(f"Using semantic search with reference chunk {reference_chunk[0]} (similarity > 0.3)")
+                else:
+                    # Fallback to text search if no reference found
+                    search_condition = "AND (to_tsvector('english', dsc.content) @@ plainto_tsquery('english', :search_term) OR to_tsvector('english', t.chunk_level_reasoning) @@ plainto_tsquery('english', :search_term))"
+                    params['search_term'] = mapped_search_term
+                    logging.warning(f"No semantic reference found for '{mapped_search_term}', falling back to text search")
+                    
+        except Exception as e:
+            logging.error(f"Semantic search setup failed: {e}")
+            # Fallback to text search
+            search_condition = "AND (to_tsvector('english', dsc.content) @@ plainto_tsquery('english', :search_term) OR to_tsvector('english', t.chunk_level_reasoning) @@ plainto_tsquery('english', :search_term))"
+            params['search_term'] = mapped_search_term
     else:
         # Invalid search mode
         logging.error(f"Invalid search mode: {search_mode}")
@@ -797,15 +864,18 @@ def fetch_search_category_data(
         params['end_date'] = date_range[1]
     
     query_parts.append("GROUP BY t.category, t.subcategory, t.sub_subcategory")
-    query_parts.append("LIMIT 10000")  # Add a safety limit
+    # Reduce limit for boolean searches to improve performance
+    limit = 5000 if search_mode == 'boolean' else 10000
+    query_parts.append(f"LIMIT {limit}")  # Add a safety limit
     
     query = " ".join(query_parts)
     
     try:
         engine = get_engine()
         with engine.connect() as conn:
-            # Set a longer statement timeout for search queries
-            conn.execute(text("SET statement_timeout = '120000'"))  # 120 seconds instead of 30
+            # Set timeout based on search mode
+            timeout = '45000' if search_mode == 'boolean' else '120000'  # 45s for boolean, 120s for others
+            conn.execute(text(f"SET statement_timeout = '{timeout}'"))
             df = pd.read_sql(text(query), conn, params=params)
         
         end_time = time.time()
@@ -849,57 +919,6 @@ def fetch_search_category_data(
             logging.info("Falling back to demo data for search category data")
             return _generate_sample_search_results(search_term)
     
-    # Optimize query to aggregate counts directly in the database
-    query_parts = [f"""
-    SELECT
-        t.category,
-        t.subcategory,
-        t.sub_subcategory,
-        COUNT(*) AS count
-    FROM taxonomy t
-    JOIN document_section_chunk dsc ON t.chunk_id = dsc.id
-    JOIN document_section ds ON dsc.document_section_id = ds.id
-    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
-    WHERE 1=1
-    {search_condition}
-    """]
-    
-    # Add filters
-    if selected_lang is not None:
-        query_parts.append("AND ud.language = :lang")
-        params['lang'] = selected_lang
-        
-    if selected_db is not None:
-        query_parts.append("AND ud.database = :db")
-        params['db'] = selected_db
-        
-    # Add source type filter
-    source_type_condition = _build_source_type_condition(source_type)
-    if source_type_condition:
-        query_parts.append(source_type_condition)
-    
-    if date_range and len(date_range) == 2 and date_range[0] and date_range[1]:
-        query_parts.append("AND ud.date BETWEEN :start_date AND :end_date")
-        params['start_date'] = date_range[0]
-        params['end_date'] = date_range[1]
-    
-    query_parts.append("GROUP BY t.category, t.subcategory, t.sub_subcategory")
-    
-    query = " ".join(query_parts)
-    
-    try:
-        engine = get_engine()
-        with engine.connect() as conn:
-            # Set a reasonable statement timeout to prevent long-running queries
-            conn.execute(text("SET statement_timeout = '30000'"))  # 30 seconds
-            df = pd.read_sql(text(query), conn, params=params)
-        
-        end_time = time.time()
-        logging.info(f"Search category data fetched in {end_time - start_time:.2f} seconds. {len(df)} rows returned.")
-        return df
-    except Exception as e:
-        logging.error(f"Error fetching search category data: {e}")
-        return pd.DataFrame()
 
 
 def fetch_all_text_chunks_for_search(
@@ -929,11 +948,15 @@ def fetch_all_text_chunks_for_search(
     start_time = time.time()
     logging.info(f"Fetching text chunks for search {search_mode}: '{search_term}' with limit {limit}")
     
+    # Apply keyword mapping to search term
+    mapped_search_term = map_keyword(search_term) or search_term
+    logging.info(f"Mapped search term '{search_term}' to '{mapped_search_term}'")
+    
     # Use demo data if in demo mode
     if is_demo_mode():
-        logging.info(f"Using demo data for fetch_all_text_chunks_for_search with term '{search_term}'")
+        logging.info(f"Using demo data for fetch_all_text_chunks_for_search with term '{mapped_search_term}'")
         # Use the sample text chunks generation with minor modifications for search
-        df = _generate_sample_text_chunks("category", search_term)
+        df = _generate_sample_text_chunks("category", mapped_search_term)
         
         # Adjust the size based on the limit if provided
         if limit and len(df) > limit:
@@ -967,27 +990,84 @@ def fetch_all_text_chunks_for_search(
     
     params = {}
     
+    # Apply keyword mapping to search term
+    mapped_search_term = map_keyword(search_term) or search_term
+    logging.info(f"Mapped search term '{search_term}' to '{mapped_search_term}' for database query")
+    
     # Add search criteria based on mode - use the SAME approach as fetch_search_category_data for consistency
     if search_mode == 'keyword':
         # Use the same text search approach as fetch_search_category_data
         search_condition = "AND (to_tsvector('english', dsc.content) @@ plainto_tsquery('english', :search_term) OR to_tsvector('english', t.chunk_level_reasoning) @@ plainto_tsquery('english', :search_term))"
-        params['search_term'] = search_term
+        params['search_term'] = mapped_search_term
     elif search_mode == 'boolean':
-        # Parse boolean search into PostgreSQL ts_query format
-        bool_query = search_term.replace(' AND ', ' & ').replace(' OR ', ' | ').replace(' NOT ', ' ! ')
-        search_condition = "AND (to_tsvector('english', dsc.content) @@ to_tsquery('english', :bool_query) OR to_tsvector('english', t.chunk_level_reasoning) @@ to_tsquery('english', :bool_query))"
-        params['bool_query'] = bool_query
+        # For performance, convert complex boolean queries to simpler keyword searches
+        # Check if query is simple (single terms with AND/OR)
+        simple_terms = mapped_search_term.replace(' AND ', ' ').replace(' OR ', ' ').replace(' NOT ', ' ')
+        word_count = len(simple_terms.split())
+        
+        if word_count <= 2:  # Enable boolean search for very simple queries only
+            # Validate and parse boolean search query
+            is_valid, error_msg = validate_boolean_syntax(mapped_search_term)
+            if not is_valid:
+                logging.error(f"Invalid boolean query: {error_msg}")
+                return pd.DataFrame()  # Return empty results for invalid queries
+            
+            # Parse boolean search into PostgreSQL ts_query format
+            bool_query, parse_success = parse_boolean_query(mapped_search_term)
+            if not parse_success:
+                logging.error(f"Failed to parse boolean query: {mapped_search_term}")
+                return pd.DataFrame()  # Return empty results for unparseable queries
+            
+            search_condition = "AND to_tsvector('english', dsc.content) @@ to_tsquery('english', :bool_query)"
+            params['bool_query'] = bool_query
+            logging.info(f"Using boolean search for simple query: {mapped_search_term}")
+        else:
+            # Complex query - fall back to keyword search for better performance
+            search_condition = "AND to_tsvector('english', dsc.content) @@ plainto_tsquery('english', :search_term)"
+            params['search_term'] = mapped_search_term
+            logging.info(f"Using keyword fallback for complex boolean query: {mapped_search_term}")
     elif search_mode == 'semantic':
-        # Fallback to same text search as keyword search for consistency
-        logging.warning("Semantic search not implemented, falling back to text search")
-        search_condition = "AND (to_tsvector('english', dsc.content) @@ plainto_tsquery('english', :search_term) OR to_tsvector('english', t.chunk_level_reasoning) @@ plainto_tsquery('english', :search_term))"
-        params['search_term'] = search_term
+        # Check if we have embeddings available for semantic search
+        try:
+            engine = get_engine()
+            with engine.connect() as conn:
+                # Get embedding for the search term by finding a similar chunk first
+                # We'll use the most similar existing chunk as a proxy for the search term
+                similarity_query = """
+                SELECT dsc.id, dsc.content, dsc.embedding
+                FROM document_section_chunk dsc
+                WHERE dsc.embedding IS NOT NULL 
+                AND to_tsvector('english', dsc.content) @@ plainto_tsquery('english', :search_term)
+                ORDER BY ts_rank(to_tsvector('english', dsc.content), plainto_tsquery('english', :search_term)) DESC
+                LIMIT 1
+                """
+                
+                result = conn.execute(text(similarity_query), {'search_term': mapped_search_term})
+                reference_chunk = result.fetchone()
+                
+                if reference_chunk:
+                    # Use vector similarity for semantic search
+                    search_condition = f"""
+                    AND (1 - (dsc.embedding <=> (SELECT embedding FROM document_section_chunk WHERE id = {reference_chunk[0]}))) > 0.3
+                    """
+                    logging.info(f"Using semantic search with reference chunk {reference_chunk[0]} (similarity > 0.3)")
+                else:
+                    # Fallback to text search if no reference found
+                    search_condition = "AND (to_tsvector('english', dsc.content) @@ plainto_tsquery('english', :search_term) OR to_tsvector('english', t.chunk_level_reasoning) @@ plainto_tsquery('english', :search_term))"
+                    params['search_term'] = mapped_search_term
+                    logging.warning(f"No semantic reference found for '{mapped_search_term}', falling back to text search")
+                    
+        except Exception as e:
+            logging.error(f"Semantic search setup failed: {e}")
+            # Fallback to text search
+            search_condition = "AND (to_tsvector('english', dsc.content) @@ plainto_tsquery('english', :search_term) OR to_tsvector('english', t.chunk_level_reasoning) @@ plainto_tsquery('english', :search_term))"
+            params['search_term'] = mapped_search_term
     else:
         # Invalid search mode
         logging.error(f"Invalid search mode: {search_mode}")
         return pd.DataFrame()
     
-    # Build query with appropriate conditions
+    # Build query with all data access
     query_parts = [f"""
     SELECT
         t.category,
@@ -1000,8 +1080,8 @@ def fetch_all_text_chunks_for_search(
         ds.heading_title,
         ud.date,
         ud.author
-    FROM taxonomy t
-    JOIN document_section_chunk dsc ON t.chunk_id = dsc.id
+    FROM document_section_chunk dsc
+    JOIN taxonomy t ON t.chunk_id = dsc.id
     JOIN document_section ds ON dsc.document_section_id = ds.id
     JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
     WHERE 1=1
@@ -1030,9 +1110,13 @@ def fetch_all_text_chunks_for_search(
     # Add order clause
     query_parts.append("ORDER BY ud.date DESC")
     
-    # Add limit only if specified
+    # Add limit - use small default if not specified to prevent timeouts
     if limit is not None:
         query_parts.append(f"LIMIT {limit}")
+    else:
+        # Use reasonable limits - boolean search can handle more with all data
+        default_limit = 500 if search_mode == 'boolean' else 1000
+        query_parts.append(f"LIMIT {default_limit}")
     
     query = " ".join(query_parts)
     logging.debug(f"Search query: {query}")
@@ -1040,8 +1124,9 @@ def fetch_all_text_chunks_for_search(
     try:
         engine = get_engine()
         with engine.connect() as conn:
-            # Set a reasonable statement timeout to prevent long-running queries
-            conn.execute(text("SET statement_timeout = '60000'"))  # 60 seconds
+            # Set timeout based on search complexity
+            timeout = '60000' if search_mode == 'boolean' else '30000'  # 60s for boolean, 30s for others
+            conn.execute(text(f"SET statement_timeout = '{timeout}'"))
             df = pd.read_sql(text(query), conn, params=params)
         
         end_time = time.time()

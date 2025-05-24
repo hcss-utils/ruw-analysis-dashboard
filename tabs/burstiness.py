@@ -46,6 +46,7 @@ from config import (
     SOURCE_TYPE_OPTIONS,
     FRESHNESS_FILTER_OPTIONS as BURSTINESS_FILTER_OPTIONS
 )
+from utils.keyword_mapping import get_mapping_status
 from utils.burst_detection import (
     kleinberg_burst_detection,
     kleinberg_multi_state_burst_detection,
@@ -165,6 +166,10 @@ def create_burstiness_tab_layout():
         db_options.extend([{'label': db, 'value': db} for db in databases])
     except Exception as e:
         logging.error(f"Error fetching database options: {e}")
+    
+    # Get keyword mapping status
+    mapping_status = get_mapping_status()
+    logging.info(f"Keyword mapping status: {mapping_status}")
     
     # Get default date range for filters
     min_date, max_date = fetch_date_range()
@@ -490,10 +495,10 @@ def create_burstiness_tab_layout():
                                         
                                         # Keywords options
                                         dbc.Col([
-                                            html.Label("Keywords:"),
+                                            html.Label("Keywords (Consolidated):"),
                                             dbc.Checklist(
                                                 id="burstiness-include-keywords",
-                                                options=[{'label': 'Include Keywords', 'value': 'keywords'}],
+                                                options=[{'label': 'Include Mapped Keywords', 'value': 'keywords'}],
                                                 value=['keywords'],
                                                 switch=True,
                                             ),
@@ -789,7 +794,7 @@ def create_burstiness_tab_layout():
                                 dbc.Row([
                                     dbc.Col([
                                         html.H4("Keywords Burst Analysis", className="mt-3"), 
-                                        html.P("This chart shows the keywords with the highest burst intensity."),
+                                        html.P("This chart shows the keywords with the highest burst intensity. Standardized through keyword mapping."),
                                         dcc.Loading(
                                             id="loading-keyword-chart",
                                             type="default",
@@ -801,7 +806,7 @@ def create_burstiness_tab_layout():
                                 dbc.Row([
                                     dbc.Col([
                                         html.H4("Keywords Burst Timeline", className="mt-3"),
-                                        html.P("This timeline shows how the burst intensity of top keywords changes over time."),
+                                        html.P("This timeline shows how the burst intensity of top keywords changes over time. Keywords are consolidated using keyword mapping."),
                                         dcc.Loading(
                                             id="loading-keyword-timeline",
                                             type="default",
@@ -1030,7 +1035,17 @@ def create_burstiness_tab_layout():
                 html.P([
                     html.Strong("Tip:"), 
                     " Compare bursts across different time periods (weeks vs. months vs. quarters) to distinguish between short-term events and longer-term trends."
-                ], style={"margin-top": "15px", "font-style": "italic"})
+                ], style={"margin-top": "15px", "font-style": "italic"}),
+                
+                html.H5("Keyword Mapping:", style={"margin-top": "20px", "color": THEME_BLUE}),
+                html.P([
+                    "This dashboard uses keyword mapping to standardize keyword variations. For example, 'USA', 'US', and 'United States' ",
+                    "are mapped to a single canonical form. This mapping improves analysis by consolidating keyword variants."
+                ]),
+                html.P([
+                    "The keyword mapping also excludes noise terms like 'https', 'www', and other technical terms that don't ",
+                    "provide meaningful insight into trends or events."
+                ])
             ]),
             dbc.ModalFooter(
                 dbc.Button("Close", id="close-burstiness-about", className="ms-auto", 

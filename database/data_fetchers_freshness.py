@@ -24,6 +24,7 @@ from config import SOURCE_TYPE_FILTERS
 from database.connection import get_engine
 from utils.cache import cached
 from utils.burst_detection import kleinberg_burst_detection, prepare_time_periods, normalize_burst_scores
+from utils.keyword_mapping import map_keyword, map_keywords, remap_and_aggregate_frequencies
 
 
 @cached(timeout=300)
@@ -118,12 +119,18 @@ def get_taxonomy_elements_for_burst(
         with engine.connect() as conn:
             df = pd.read_sql(text(query), conn, params=params)
         
-        # Find the top N elements by total count for analysis
-        element_totals = df.groupby('element')['count'].sum().reset_index()
-        top_elements = element_totals.sort_values('count', ascending=False).head(top_n)['element'].tolist()
+        # Select top elements per time period (per date)
+        top_elements_per_period = set()
+        # Group by date
+        for date, date_df in df.groupby('date'):
+            # Get top elements for this date
+            date_top = date_df.nlargest(top_n, 'count')['element'].tolist()
+            # Add to our set of top elements
+            top_elements_per_period.update(date_top)
         
-        # Filter to only include top elements
-        df = df[df['element'].isin(top_elements)]
+        # Filter to only include top elements from any period
+        df = df[df['element'].isin(top_elements_per_period)]
+        logging.info(f"Selected {len(top_elements_per_period)} unique top taxonomy elements across all time periods")
         
         logging.info(f"Fetched {len(df)} taxonomy element data points for burst analysis")
         return df
@@ -223,12 +230,48 @@ def get_keywords_for_burst(
             logging.warning("No keyword data found for burst analysis")
             return pd.DataFrame()
         
-        # Find the top N keywords by total count for analysis
-        element_totals = df.groupby('element')['count'].sum().reset_index()
-        top_elements = element_totals.sort_values('count', ascending=False).head(top_n)['element'].tolist()
+        # Apply keyword mapping to each element and recalculate counts
+        if not df.empty:
+            mapped_keywords = []
+            # Create temporary DataFrame for aggregation
+            tmp_df = pd.DataFrame()
+            
+            # Group by date to maintain daily data points
+            for date, date_df in df.groupby('date'):
+                # Extract elements and counts for this date
+                elements_df = pd.DataFrame({
+                    'Keyword': date_df['element'],
+                    'Count': date_df['count']
+                })
+                
+                # Apply remapping and aggregation
+                mapped_df = remap_and_aggregate_frequencies(elements_df, keyword_col='Keyword', freq_col='Count')
+                
+                # Convert back to the expected format
+                if not mapped_df.empty:
+                    for _, row in mapped_df.iterrows():
+                        mapped_keywords.append({
+                            'date': date,
+                            'element': row['Keyword'],
+                            'count': row['Count']
+                        })
+            
+            # Replace original DataFrame with mapped results
+            if mapped_keywords:
+                df = pd.DataFrame(mapped_keywords)
+            
+        # Select top keywords per time period (per date)
+        top_elements_per_period = set()
+        # Group by date
+        for date, date_df in df.groupby('date'):
+            # Get top elements for this date
+            date_top = date_df.nlargest(top_n, 'count')['element'].tolist()
+            # Add to our set of top elements
+            top_elements_per_period.update(date_top)
         
-        # Filter to only include top elements
-        df = df[df['element'].isin(top_elements)]
+        # Filter to only include top elements from any period
+        df = df[df['element'].isin(top_elements_per_period)]
+        logging.info(f"Selected {len(top_elements_per_period)} unique top keywords across all time periods")
         
         logging.info(f"Fetched {len(df)} keyword data points for burst analysis")
         return df
@@ -350,12 +393,73 @@ def get_named_entities_for_burst(
             logging.warning("No named entity data found for burst analysis")
             return pd.DataFrame()
         
-        # Find the top N entities by total count for analysis
-        element_totals = df.groupby('element')['count'].sum().reset_index()
-        top_elements = element_totals.sort_values('count', ascending=False).head(top_n)['element'].tolist()
+        # Apply mapping to named entities - first extract entity text without type suffix
+        entity_mapping = []
+        for _, row in df.iterrows():
+            element = row['element']
+            # Extract the entity text part from element string (format: "text (type)")
+            entity_text = element.split(' (')[0] if ' (' in element else element
+            entity_type = element.split(' (')[1].rstrip(')') if ' (' in element else ''
+            
+            # Apply mapping to the entity text
+            mapped_text = map_keyword(entity_text)
+            
+            # Skip excluded entities
+            if mapped_text is None:
+                continue
+                
+            # Reconstruct the element with the mapped text
+            # For clarity in burst analysis, we'll treat entities without type suffix
+            # This allows for better consolidation and burst detection
+            mapped_element = mapped_text
+            
+            entity_mapping.append({
+                'date': row['date'],
+                'element': mapped_element,
+                'count': row['count'],
+                'original': element,
+                'entity_type': entity_type  # Save the type for later use
+            })
         
-        # Filter to only include top elements
-        df = df[df['element'].isin(top_elements)]
+        # Convert to DataFrame
+        if entity_mapping:
+            mapped_df = pd.DataFrame(entity_mapping)
+            
+            # Create a new column that combines element name with type for display
+            # This preserves the type information while allowing aggregation by base element
+            mapped_df['display_element'] = mapped_df.apply(
+                lambda row: f"{row['element']} ({row['entity_type']})" if row['entity_type'] else row['element'], 
+                axis=1
+            )
+            
+            # Group by date and element (without type) to aggregate counts for burst detection
+            aggregated = mapped_df.groupby(['date', 'element'])['count'].sum().reset_index()
+            
+            # Remember the entity type for each element (take most common type)
+            type_counts = mapped_df.groupby('element')['entity_type'].agg(lambda x: max(x.value_counts().index))
+            entity_types = type_counts.to_dict()
+            
+            # Store the entity types as a property of the dataframe for later use
+            aggregated.attrs['entity_types'] = entity_types
+            
+            df = aggregated
+            logging.info(f"Applied entity mapping and reduced from {len(entity_mapping)} to {len(df)} unique entities")
+        else:
+            logging.warning("No entities remained after mapping")
+            return pd.DataFrame()
+        
+        # Select top entities per time period (per date)
+        top_elements_per_period = set()
+        # Group by date
+        for date, date_df in df.groupby('date'):
+            # Get top elements for this date
+            date_top = date_df.nlargest(top_n, 'count')['element'].tolist()
+            # Add to our set of top elements
+            top_elements_per_period.update(date_top)
+        
+        # Filter to only include top elements from any period
+        df = df[df['element'].isin(top_elements_per_period)]
+        logging.info(f"Selected {len(top_elements_per_period)} unique top entities across all time periods")
         
         logging.info(f"Fetched {len(df)} named entity data points for burst analysis")
         return df
@@ -417,9 +521,19 @@ def get_burst_data_for_periods(
                 source_type=source_type, date_range=date_range
             )
             if not taxonomy_df.empty:
+                # Sort elements by total count to use only the most significant ones
+                element_counts = taxonomy_df.groupby('element')['count'].sum().reset_index()
+                element_counts = element_counts.sort_values('count', ascending=False)
+                # Take the top 40 elements to ensure good coverage
+                top_elements = element_counts.head(40)['element'].tolist()
+                # Log the elements being processed
+                logging.info(f"Processing burst detection for {len(top_elements)} top taxonomy elements in period {period_label}")
+                
                 # Group by element and calculate total count and apply burst detection
-                for element in taxonomy_df['element'].unique():
+                for element in top_elements:
                     element_df = taxonomy_df[taxonomy_df['element'] == element]
+                    if element_df.empty:
+                        continue
                     element_df = element_df.sort_values('date')
                     
                     # Add to the element's time series
@@ -449,9 +563,19 @@ def get_burst_data_for_periods(
                 source_type=source_type, date_range=date_range
             )
             if not keywords_df.empty:
+                # Sort elements by total count to use only the most significant ones
+                element_counts = keywords_df.groupby('element')['count'].sum().reset_index()
+                element_counts = element_counts.sort_values('count', ascending=False)
+                # Take the top N overall elements (twice the requested top_n to ensure coverage)
+                top_elements = element_counts.head(keywords_top_n * 2)['element'].tolist()
+                # Log the elements being processed
+                logging.info(f"Processing burst detection for {len(top_elements)} top keywords in period {period_label}")
+                
                 # Group by element and calculate total count and apply burst detection
-                for element in keywords_df['element'].unique():
+                for element in top_elements:
                     element_df = keywords_df[keywords_df['element'] == element]
+                    if element_df.empty:
+                        continue
                     element_df = element_df.sort_values('date')
                     
                     # Add to the element's time series
@@ -473,6 +597,8 @@ def get_burst_data_for_periods(
     # Process named entities data if requested
     if 'named_entities' in data_types:
         entities = {}
+        entity_types_dict = {}  # Store entity types for reconstruction
+        
         for (start_date, end_date), period_label in zip(period_boundaries, period_labels):
             entities_df = get_named_entities_for_burst(
                 start_date, end_date, filter_value, 
@@ -482,9 +608,24 @@ def get_burst_data_for_periods(
                 source_type=source_type, date_range=date_range
             )
             if not entities_df.empty:
+                # Capture entity types if available in the attrs of the dataframe
+                if hasattr(entities_df, 'attrs') and 'entity_types' in entities_df.attrs:
+                    # Update our global entity types dictionary
+                    entity_types_dict.update(entities_df.attrs['entity_types'])
+                
+                # Sort elements by total count to use only the most significant ones
+                element_counts = entities_df.groupby('element')['count'].sum().reset_index()
+                element_counts = element_counts.sort_values('count', ascending=False)
+                # Take the top N overall elements (twice the requested top_n to ensure coverage)
+                top_elements = element_counts.head(entities_top_n * 2)['element'].tolist()
+                # Log the elements being processed
+                logging.info(f"Processing burst detection for {len(top_elements)} top named entities in period {period_label}")
+                
                 # Group by element and calculate total count and apply burst detection
-                for element in entities_df['element'].unique():
+                for element in top_elements:
                     element_df = entities_df[entities_df['element'] == element]
+                    if element_df.empty:
+                        continue
                     element_df = element_df.sort_values('date')
                     
                     # Add to the element's time series
@@ -501,7 +642,20 @@ def get_burst_data_for_periods(
                     entities[element] = pd.concat([entities[element], burst_df])
         
         # Normalize burst scores across all named entities
-        results['named_entities'] = normalize_burst_scores(entities)
+        normalized_entities = normalize_burst_scores(entities)
+        
+        # Create display entities with type information for visualization
+        display_entities = {}
+        for element, df in normalized_entities.items():
+            if not df.empty:
+                # Get entity type for this element if available
+                entity_type = entity_types_dict.get(element, '')
+                # Create display name with type
+                display_name = f"{element} ({entity_type})" if entity_type else element
+                # Store with display name
+                display_entities[display_name] = df
+        
+        results['named_entities'] = display_entities
     
     return results
 
@@ -554,6 +708,8 @@ def calculate_burst_summaries(burst_data: Dict[str, Dict[str, pd.DataFrame]]) ->
             summary_df = pd.DataFrame(summary_rows)
             # Sort by max burst intensity descending
             summary_df = summary_df.sort_values('max_burst_intensity', ascending=False)
+            # Limit to top 20 items for display
+            summary_df = summary_df.head(20)
             summaries[data_type] = summary_df
         else:
             summaries[data_type] = pd.DataFrame()
