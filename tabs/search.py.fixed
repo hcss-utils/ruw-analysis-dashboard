@@ -1,0 +1,214 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+"""
+Search tab layout and callbacks for the dashboard.
+This tab provides search functionality across the database with different search modes.
+"""
+
+import logging
+import re
+from datetime import datetime
+from typing import Dict, List, Optional, Union, Any
+
+import pandas as pd
+import dash
+from dash import html, dcc, callback_context
+from dash.dependencies import Input, Output, State
+import dash_bootstrap_components as dbc
+import plotly.graph_objects as go
+
+import sys
+import os
+
+# Add the project root to the path to import modules
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from database.data_fetchers import fetch_search_category_data, fetch_all_text_chunks_for_search
+from utils.helpers import format_chunk_row, get_unique_filename
+from visualizations.sunburst import create_sunburst_chart
+from visualizations.timeline import create_timeline_chart
+from config import SEARCH_RESULT_LIMIT, THEME_COLORS
+
+
+def create_search_tab_layout(db_options: List, min_date: datetime = None, max_date: datetime = None) -> html.Div:
+    """
+    Create the Search tab layout.
+    
+    Args:
+        db_options: Database options for filters
+        min_date: Minimum date for filters
+        max_date: Maximum date for filters
+        
+    Returns:
+        html.Div: Search tab layout
+    """
+    search_tab_layout = html.Div([
+        # Header with title and About button
+        html.Div([
+            html.H3("Search Data", style={"display": "inline-block", "margin-right": "20px"}),
+            dbc.Button(
+                "About", 
+                id="open-about-search", 
+                color="secondary", 
+                size="sm",
+                className="ml-auto",
+                style={"display": "inline-block"}
+            ),
+        ], style={"display": "flex", "align-items": "center", "margin-bottom": "20px"}),
+        
+        # Anchor for scrolling to top
+        html.Div(id='search-top'),
+        
+        # Enhanced Search Card with multiple search modes
+        dbc.Card([
+            dbc.CardHeader("Search Options"),
+            dbc.CardBody([
+                dbc.Row([
+                    dbc.Col([
+                        html.Label("Search Mode:"),
+                        dcc.RadioItems(
+                            id='search-mode',
+                            options=[
+                                {'label': 'Keyword Search', 'value': 'keyword'},
+                                {'label': 'Boolean Search', 'value': 'boolean'},
+                                {'label': 'Semantic Search (Beta)', 'value': 'semantic'}
+                            ],
+                            value='keyword',
+                            style={'display': 'flex', 'justify-content': 'space-between'}
+                        ),
+                        dbc.Tooltip(
+                            "Choose search mode: Keyword (whole word matching), Boolean (AND, OR, NOT operators), or Semantic (meaning-based)",
+                            target="search-mode",
+                        )
+                    ], width=12)
+                ]),
+                
+                dbc.Row([
+                    dbc.Col([
+                        html.Label("Search Terms:"),
+                        dcc.Input(
+                            id='search-input',
+                            type='text',
+                            placeholder='Enter search term...',
+                            style={'width': '100%'}
+                        ),
+                        html.Div(id='search-syntax-help', style={'font-size': '0.8em', 'margin-top': '5px'})
+                    ], width=12)
+                ], className="mt-3"),
+                
+                dbc.Row([
+                    dbc.Col([
+                        html.Label("Language:"),
+                        dcc.Dropdown(
+                            id='search-language-dropdown',
+                            options=[
+                                {'label': 'Both English and Russian', 'value': 'ALL'},
+                                {'label': 'Russian', 'value': 'RU'},
+                                {'label': 'English', 'value': 'EN'}
+                            ],
+                            placeholder='Select Language',
+                            value='ALL'
+                        ),
+                    ], width=4),
+                    dbc.Col([
+                        html.Label("Database:"),
+                        dcc.Dropdown(
+                            id='search-database-dropdown',
+                            options=db_options,
+                            placeholder='Select Database',
+                            value='ALL'
+                        ),
+                    ], width=4),
+                    dbc.Col([
+                        html.Label("Source Type:"),
+                        dcc.Dropdown(
+                            id='search-source-type-dropdown',
+                            options=[
+                                {'label': 'All Sources', 'value': 'ALL'},
+                                {'label': 'Primary Sources', 'value': 'Primary'},
+                                {'label': 'Military Publications', 'value': 'Military'},
+                                {'label': 'Scholarly Sources', 'value': 'Scholarly'},
+                                {'label': 'Social Media', 'value': 'Social Media'}
+                            ],
+                            placeholder='Select Source Type',
+                            value='ALL'
+                        ),
+                    ], width=4)
+                ], className="mt-3"),
+                
+                dbc.Row([
+                    dbc.Col([
+                        html.Label("Date Range:"),
+                        dcc.DatePickerRange(
+                            id='search-date-range-picker',
+                            start_date=min_date,
+                            end_date=max_date,
+                            min_date_allowed=min_date,
+                            max_date_allowed=max_date,
+                            display_format='YYYY-MM-DD'
+                        ),
+                    ], width=8),
+                    dbc.Col([
+                        html.Br(),
+                        dbc.Button('Search', id='search-button', color="primary", className="mt-2"),
+                    ], width=4, style={"text-align": "right"})
+                ], className="mt-3"),
+            ])
+        ], className="mb-4"),
+        
+        # Results section
+        html.Div(id='search-stats-container', className="mt-4"),
+        
+        dbc.Tabs([
+            dbc.Tab([
+                dcc.Loading(
+                    id="loading-search-sunburst",
+                    type="default",
+                    children=[dcc.Graph(id='search-sunburst-chart', style={'height': '700px'})]
+                )
+            ], label="Category Distribution"),
+            
+            dbc.Tab([
+                dcc.Loading(
+                    id="loading-search-timeline",
+                    type="default",
+                    children=[dcc.Graph(id='search-timeline-chart', style={'height': '400px'})]
+                )
+            ], label="Timeline")
+        ], id="search-results-tabs", style={'display': 'none'}),
+        
+        # Store components
+        dcc.Store(id='search-results-store'),
+        dcc.Store(id='search-current-page-store', data=0),
+        
+        # Results containers
+        html.Div(id='search-results-header', style={'display': 'none'}),
+        html.Div(id='search-chunks-container'),
+        
+        # Pagination controls
+        html.Div([
+            dbc.Button('Previous Page', id='search-prev-page-button', color="secondary", className="me-2"),
+            html.Span("Page 1", id='search-page-indicator', style={'margin': '0 10px'}),
+            dbc.Button('Next Page', id='search-next-page-button', color="secondary"),
+        ], id='search-pagination-controls', style={'margin-top': '20px', 'display': 'none', 'justify-content': 'center', 'align-items': 'center'}),
+        
+        # Download buttons
+        html.Div([
+            dbc.Button("Download CSV", id="search-btn-csv", color="success", className="me-2"),
+            dbc.Button("Download JSON", id="search-btn-json", color="success"),
+        ], id='search-download-buttons', style={'margin-top': '20px', 'text-align': 'center', 'display': 'none'}),
+        
+        # Back to Top button
+        html.Div(
+            dbc.Button(
+                "Back to Top",
+                id="search-back-to-top",
+                color="secondary",
+                className="mt-3 mb-4",
+                href="#search-top",
+                style={"width": "150px", "margin": "20px auto", "display": "block"}
+            ),
+            id='search-back-to-top-container',
+            className="text-center",
+            style={'margin-top': '20px', 'display': 'none'}
+        ),

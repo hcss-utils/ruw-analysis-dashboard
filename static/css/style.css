@@ -49,6 +49,18 @@ h1 {
 .report-link:hover {
     background-color: #cadbf4;
 }
+
+/* Progress animation for search operations */
+@keyframes loading-progress {
+    0% { transform: translateX(-100%); }
+    50% { transform: translateX(0%); }
+    100% { transform: translateX(100%); }
+}
+
+.progress-fill {
+    background: linear-gradient(90deg, transparent, #13376f, transparent);
+    animation: loading-progress 2s infinite linear;
+}
 .logout-link {
     text-align: center;
     margin-top: 20px;

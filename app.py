@@ -34,6 +34,7 @@ from tabs.compare import create_compare_tab_layout, register_compare_callbacks
 from tabs.burstiness import create_burstiness_tab_layout, register_burstiness_callbacks
 from components.layout import create_header, create_about_modal
 from utils.cache import clear_cache
+from utils.keyword_mapping import load_mapping_files, get_mapping_status
 
 # Define the consistent color for all components - use the exact color from the color picker
 THEME_BLUE = "#13376f"  # Dark blue color from the image
@@ -84,7 +85,22 @@ def create_dash_app() -> dash.Dash:
         __name__, 
         external_stylesheets=[dbc.themes.BOOTSTRAP], 
         assets_folder='static',
-        suppress_callback_exceptions=True
+        suppress_callback_exceptions=True,
+        # Fix for async-slider.js loading issues
+        eager_loading=True,  # Preload all components at startup
+        update_title=None,   # Disable browser tab title updates during callbacks
+        assets_ignore='.*\\.scss',  # Ignore SCSS files in assets folder
+        # Add meta tags for better browser compatibility
+        meta_tags=[
+            # Responsive meta tag
+            {"name": "viewport", "content": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"},
+            # IE compatibility
+            {"http-equiv": "X-UA-Compatible", "content": "IE=edge"},
+            # No caching meta tag
+            {"http-equiv": "Cache-Control", "content": "no-cache, no-store, must-revalidate"},
+            {"http-equiv": "Pragma", "content": "no-cache"},
+            {"http-equiv": "Expires", "content": "0"}
+        ]
     )
     
     app.title = "Russian-Ukrainian War Data Analysis Dashboard"
@@ -94,6 +110,18 @@ def create_dash_app() -> dash.Dash:
     # Add Basic Authentication
     # Comment this out during development
     # auth = dash_auth.BasicAuth(app, VALID_USERNAME_PASSWORD_PAIRS)
+    
+    # Load keyword mapping files
+    try:
+        success, message = load_mapping_files()
+        if success:
+            logging.info(f"Keyword mapping files loaded successfully: {message}")
+            mapping_status = get_mapping_status()
+            logging.info(f"Mapping status: {mapping_status}")
+        else:
+            logging.warning(f"Failed to load keyword mapping files: {message}")
+    except Exception as e:
+        logging.error(f"Error loading keyword mapping files: {e}")
     
     # Fetch initial data
     db_options = []
@@ -155,6 +183,24 @@ def create_dash_app() -> dash.Dash:
             <title>{%title%}</title>
             {%favicon%}
             {%css%}
+            <!-- Preload critical scripts to prevent loading errors -->
+            <link rel="preload" href="/_dash-component-suites/dash/dcc/async-slider.js" as="script">
+            <link rel="preload" href="/_dash-component-suites/dash/dcc/async-graph.js" as="script">
+            <link rel="preload" href="/_dash-component-suites/dash/dcc/async-plotlyjs.js" as="script">
+            <script>
+                // Error handler for async component loading
+                window.addEventListener('error', function(e) {
+                    if (e.filename && e.filename.includes('_dash-component-suites')) {
+                        console.log('Component loading error detected:', e.filename);
+                        // Attempt to reload the component
+                        var script = document.createElement('script');
+                        script.src = e.filename + '?t=' + new Date().getTime();
+                        document.head.appendChild(script);
+                        // Prevent default error
+                        e.preventDefault();
+                    }
+                }, true);
+            </script>
             <style>
                 /* Essential styles for consistent layout */
                 body, html {
@@ -228,6 +274,45 @@ def create_dash_app() -> dash.Dash:
                 
                 .DateRangePickerInput_arrow {
                     padding: 0 5px !important;
+                }
+                
+                /* Additional fixes for slider components */
+                .rc-slider-handle {
+                    touch-action: manipulation;
+                    -webkit-touch-callout: none;
+                    -webkit-user-select: none;
+                    -khtml-user-select: none;
+                    -moz-user-select: none;
+                    -ms-user-select: none;
+                    user-select: none;
+                }
+                
+                /* Async component loading fallback */
+                #loading-fallback {
+                    display: none;
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background-color: rgba(255, 255, 255, 0.8);
+                    z-index: 9999;
+                    text-align: center;
+                    padding-top: 20%;
+                }
+                
+                /* Dash component loading fixes */
+                ._dash-loading-callback {
+                    position: fixed !important;
+                    top: 50% !important;
+                    left: 50% !important;
+                    transform: translate(-50%, -50%) !important;
+                }
+                
+                /* Spinner animation */
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
                 }
                 
                 /* Filter card styling to make it more compact */
@@ -346,11 +431,35 @@ def create_dash_app() -> dash.Dash:
             </style>
         </head>
         <body>
+            <!-- Fallback loading div that appears if components fail to load -->
+            <div id="loading-fallback">
+                <h3>Loading dashboard components...</h3>
+                <p>If this message persists, please try refreshing the page.</p>
+                <div style="width: 40px; height: 40px; margin: 20px auto; border: 4px solid #f3f3f3; border-top: 4px solid #13376f; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+            </div>
             {%app_entry%}
             <footer>
                 {%config%}
                 {%scripts%}
                 {%renderer%}
+                <!-- Additional script to handle errors and retry loading -->
+                <script>
+                    // Show loading fallback if components fail to load
+                    window.addEventListener('error', function(e) {
+                        if (e.filename && e.filename.indexOf('async') !== -1) {
+                            document.getElementById('loading-fallback').style.display = 'block';
+                            // Auto-refresh after 5 seconds
+                            setTimeout(function() {
+                                window.location.reload();
+                            }, 5000);
+                        }
+                    }, true);
+                    
+                    // Handle initial load
+                    window.addEventListener('load', function() {
+                        document.getElementById('loading-fallback').style.display = 'none';
+                    });
+                </script>
             </footer>
         </body>
     </html>
