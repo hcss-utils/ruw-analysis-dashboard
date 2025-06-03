@@ -542,9 +542,17 @@ def fetch_text_chunks(
         t.chunk_level_reasoning AS reasoning,
         ud.document_id,
         ud.database,
+        ud.source,
         ds.heading_title,
         ud.date,
-        ud.author
+        ud.author,
+        ud.language,
+        dsc.chunk_index,
+        ds.sequence_number,
+        dsc.keywords,
+        dsc.named_entities,
+        t.taxonomy_reasoning,
+        ud.is_full_text_present
     FROM taxonomy t
     JOIN document_section_chunk dsc ON t.chunk_id = dsc.id
     JOIN document_section ds ON dsc.document_section_id = ds.id
@@ -1077,9 +1085,17 @@ def fetch_all_text_chunks_for_search(
         t.chunk_level_reasoning AS reasoning,
         ud.document_id,
         ud.database,
+        ud.source,
         ds.heading_title,
         ud.date,
-        ud.author
+        ud.author,
+        ud.language,
+        dsc.chunk_index,
+        ds.sequence_number,
+        dsc.keywords,
+        dsc.named_entities,
+        t.taxonomy_reasoning,
+        ud.is_full_text_present
     FROM document_section_chunk dsc
     JOIN taxonomy t ON t.chunk_id = dsc.id
     JOIN document_section ds ON dsc.document_section_id = ds.id
