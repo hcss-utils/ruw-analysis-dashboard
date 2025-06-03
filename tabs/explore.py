@@ -161,10 +161,10 @@ def create_explore_tab_layout(db_options: List, min_date: datetime = None, max_d
         ),
         html.Div(id='chunks-selection-stats', style={'margin-bottom': '15px', 'text-align': 'center'}),
 
-        # Loading spinner for chunks - use the same spinner style for consistency
+        # Loading spinner for chunks - use circle type for radar pulse effect
         dcc.Loading(
             id="loading-chunks",
-            type="default",  # This will use the globally styled spinner
+            type="circle",  # Use circle type which we style as radar pulse
             children=[
                 # Pagination controls (top)
                 pagination_controls['top'],
@@ -175,7 +175,8 @@ def create_explore_tab_layout(db_options: List, min_date: datetime = None, max_d
                 # Pagination controls (bottom)
                 pagination_controls['bottom'],
             ],
-            color=blue_color  # Use the same blue color for the spinner
+            color=blue_color,  # Use the same blue color for the spinner
+            className="radar-loading"  # Add class for custom styling
         ),
 
         # Download buttons

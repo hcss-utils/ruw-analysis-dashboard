@@ -354,6 +354,29 @@ def create_database_breakdown_charts(entity_type, data_dict, title_prefix=""):
     ], style={"margin-top": "50px"})
 
 
+def create_subtab_modal(modal_id, title, content):
+    """
+    Create a modal for subtab About sections.
+    
+    Args:
+        modal_id: ID for the modal
+        title: Modal title
+        content: Modal body content (list of elements)
+        
+    Returns:
+        dbc.Modal: Modal component
+    """
+    return dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle(title), 
+                       style={"background-color": "#13376f", "color": "white"}),
+        dbc.ModalBody(content),
+        dbc.ModalFooter(
+            dbc.Button("Close", id=f"close-{modal_id}", className="ms-auto", 
+                      style={"background-color": "#13376f", "border": "none"})
+        ),
+    ], id=f"{modal_id}-modal", size="lg", is_open=False)
+
+
 def create_documents_tab(
     documents_data,
     time_series_data=None,
@@ -374,21 +397,18 @@ def create_documents_tab(
     Returns:
         html.Div: Tab content
     """
-    # About box for Documents tab
-    about_box = html.Div([
-        html.H5("About Documents", style={"color": "#13376f"}),
-        html.P([
-            "This tab shows statistics about documents in the corpus. A document is considered 'relevant' "
-            "if it contains at least one chunk with taxonomic classification. The coverage metrics help "
-            "identify which sources contribute most to the analyzed content."
-        ]),
-        html.Ul([
-            html.Li("Total Documents: All documents in the filtered dataset"),
-            html.Li("Relevant Documents: Documents containing classified content"),
-            html.Li("Relevance Rate: Percentage of documents with taxonomic elements"),
-            html.Li("Date Range: Time span of documents in the current filter")
-        ])
-    ], className="about-box mb-4")
+    # Create header with About button
+    header = html.Div([
+        html.H4("Documents Overview", style={"display": "inline-block", "margin-right": "20px"}),
+        dbc.Button(
+            "About", 
+            id="open-about-documents", 
+            color="secondary", 
+            size="sm",
+            className="ml-auto about-button",
+            style={"display": "inline-block"}
+        ),
+    ], style={"display": "flex", "align-items": "center", "margin-bottom": "20px"})
     # Document Statistics card
     documents_stats_card = html.Div([
         html.Div([
@@ -555,9 +575,28 @@ def create_documents_tab(
         # Create placeholder
         database_time_fig = go.Figure().update_layout(title="No database time series data available")
     
+    # Create About modal for Documents
+    about_modal = create_subtab_modal(
+        "about-documents",
+        "About Documents",
+        [
+            html.P([
+                "This tab shows statistics about documents in the corpus. A document is considered 'relevant' "
+                "if it contains at least one chunk with taxonomic classification. The coverage metrics help "
+                "identify which sources contribute most to the analyzed content."
+            ]),
+            html.Ul([
+                html.Li("Total Documents: All documents in the filtered dataset"),
+                html.Li("Relevant Documents: Documents containing classified content"),
+                html.Li("Relevance Rate: Percentage of documents with taxonomic elements"),
+                html.Li("Date Range: Time span of documents in the current filter")
+            ])
+        ]
+    )
+    
     # Combine everything into the tab layout
     documents_tab = html.Div([
-        about_box,
+        header,
         
         dbc.Row([
             dbc.Col([
@@ -589,7 +628,10 @@ def create_documents_tab(
         dcc.Graph(figure=database_time_fig),
         
         # Add database breakdown charts at the bottom
-        create_database_breakdown_charts('document', database_breakdown, "Document Coverage")
+        create_database_breakdown_charts('document', database_breakdown, "Document Coverage"),
+        
+        # Add the About modal
+        about_modal
     ])
     
     return documents_tab
@@ -614,21 +656,18 @@ def create_chunks_tab(
     Returns:
         html.Div: Tab content
     """
-    # About box for Chunks tab
-    about_box = html.Div([
-        html.H5("About Chunks", style={"color": "#13376f"}),
-        html.P([
-            "Chunks are segments of text extracted from documents for analysis. A chunk is 'relevant' "
-            "if it has been assigned at least one taxonomic classification. This tab shows how content "
-            "is distributed across the corpus at the chunk level."
-        ]),
-        html.Ul([
-            html.Li("Total Chunks: All text segments in the filtered dataset"),
-            html.Li("Relevant Chunks: Chunks with taxonomic classifications"),
-            html.Li("Avg. Chunks per Document: Average segmentation of documents"),
-            html.Li("Coverage metrics show the proportion of analyzed content")
-        ])
-    ], className="about-box mb-4")
+    # Create header with About button
+    header = html.Div([
+        html.H4("Chunks Overview", style={"display": "inline-block", "margin-right": "20px"}),
+        dbc.Button(
+            "About", 
+            id="open-about-chunks", 
+            color="secondary", 
+            size="sm",
+            className="ml-auto about-button",
+            style={"display": "inline-block"}
+        ),
+    ], style={"display": "flex", "align-items": "center", "margin-bottom": "20px"})
     # Chunk Statistics card
     chunks_stats_card = html.Div([
         html.Div([
@@ -797,9 +836,28 @@ def create_chunks_tab(
         # Create placeholder
         database_time_fig = go.Figure().update_layout(title="No database time series data available")
     
+    # Create About modal for Chunks
+    about_modal = create_subtab_modal(
+        "about-chunks",
+        "About Chunks",
+        [
+            html.P([
+                "Chunks are segments of text extracted from documents for analysis. A chunk is 'relevant' "
+                "if it has been assigned at least one taxonomic classification. This tab shows how content "
+                "is distributed across the corpus at the chunk level."
+            ]),
+            html.Ul([
+                html.Li("Total Chunks: All text segments in the filtered dataset"),
+                html.Li("Relevant Chunks: Chunks with taxonomic classifications"),
+                html.Li("Avg. Chunks per Document: Average segmentation of documents"),
+                html.Li("Coverage metrics show the proportion of analyzed content")
+            ])
+        ]
+    )
+    
     # Combine everything into the tab layout
     chunks_tab = html.Div([
-        about_box,
+        header,
         
         dbc.Row([
             dbc.Col([
@@ -831,7 +889,10 @@ def create_chunks_tab(
         dcc.Graph(figure=database_time_fig),
         
         # Add database breakdown charts at the bottom
-        create_database_breakdown_charts('chunk', database_breakdown, "Chunk Coverage")
+        create_database_breakdown_charts('chunk', database_breakdown, "Chunk Coverage"),
+        
+        # Add the About modal
+        about_modal
     ])
     
     return chunks_tab
@@ -855,21 +916,18 @@ def create_taxonomy_combinations_tab(
     Returns:
         html.Div: Tab content
     """
-    # About box for Taxonomy Combinations tab
-    about_box = html.Div([
-        html.H5("About Taxonomy Combinations", style={"color": "#13376f"}),
-        html.P([
-            "This tab shows how taxonomic classifications are distributed across chunks. Many chunks have "
-            "multiple taxonomic elements assigned, indicating complex or multi-faceted content. The distribution "
-            "helps understand content complexity."
-        ]),
-        html.Ul([
-            html.Li("0 combinations: Chunks without any taxonomic classification"),
-            html.Li("1-4 combinations: Chunks with single or few classifications"),
-            html.Li("5+ combinations: Highly complex chunks with many themes"),
-            html.Li("Coverage shows the percentage of chunks with classifications")
-        ])
-    ], className="about-box mb-4")
+    # Create header with About button
+    header = html.Div([
+        html.H4("Taxonomy Combinations Overview", style={"display": "inline-block", "margin-right": "20px"}),
+        dbc.Button(
+            "About", 
+            id="open-about-taxonomy", 
+            color="secondary", 
+            size="sm",
+            className="ml-auto about-button",
+            style={"display": "inline-block"}
+        ),
+    ], style={"display": "flex", "align-items": "center", "margin-bottom": "20px"})
     # Taxonomy Statistics card WITH THOUSANDS SEPARATORS
     taxonomy_stats_card = html.Div([
         html.Div([
@@ -1060,9 +1118,28 @@ def create_taxonomy_combinations_tab(
         database_fig = go.Figure().update_layout(title="No database distribution data available")
         database_time_fig = go.Figure().update_layout(title="No database time series data available")
     
+    # Create About modal for Taxonomy Combinations
+    about_modal = create_subtab_modal(
+        "about-taxonomy",
+        "About Taxonomy Combinations",
+        [
+            html.P([
+                "This tab shows how taxonomic classifications are distributed across chunks. Many chunks have "
+                "multiple taxonomic elements assigned, indicating complex or multi-faceted content. The distribution "
+                "helps understand content complexity."
+            ]),
+            html.Ul([
+                html.Li("0 combinations: Chunks without any taxonomic classification"),
+                html.Li("1-4 combinations: Chunks with single or few classifications"),
+                html.Li("5+ combinations: Highly complex chunks with many themes"),
+                html.Li("Coverage shows the percentage of chunks with classifications")
+            ])
+        ]
+    )
+    
     # Combine everything into the tab layout
     taxonomy_tab = html.Div([
-        about_box,
+        header,
         
         dbc.Row([
             dbc.Col([
@@ -1091,7 +1168,10 @@ def create_taxonomy_combinations_tab(
         
         dcc.Graph(figure=language_time_fig),
         
-        dcc.Graph(figure=database_time_fig)
+        dcc.Graph(figure=database_time_fig),
+        
+        # Add the About modal
+        about_modal
     ])
     
     return taxonomy_tab
@@ -1117,25 +1197,18 @@ def create_keywords_tab(
     Returns:
         html.Div: Tab content
     """
-    # About box for Keywords tab
-    about_box = html.Div([
-        html.H5("About Keywords", style={"color": "#13376f"}),
-        html.P([
-            "Keywords are automatically extracted terms that represent key concepts in the text. "
-            "NOTE: Keywords are extracted from ALL chunks in the corpus, not just those with taxonomic "
-            "classifications. This provides a comprehensive view of all content themes."
-        ]),
-        html.Ul([
-            html.Li("Unique Keywords: Distinct terms found across all chunks"),
-            html.Li("Total Occurrences: Sum of all keyword appearances"),
-            html.Li("Coverage: Percentage of ALL chunks containing keywords"),
-            html.Li("Top keywords show the most frequent concepts in the corpus")
-        ]),
-        html.P([
-            html.Strong("Important: "),
-            "Keyword statistics include both relevant and irrelevant chunks to provide complete corpus coverage."
-        ], className="text-info")
-    ], className="about-box mb-4")
+    # Create header with About button
+    header = html.Div([
+        html.H4("Keywords Overview", style={"display": "inline-block", "margin-right": "20px"}),
+        dbc.Button(
+            "About", 
+            id="open-about-keywords", 
+            color="secondary", 
+            size="sm",
+            className="ml-auto about-button",
+            style={"display": "inline-block"}
+        ),
+    ], style={"display": "flex", "align-items": "center", "margin-bottom": "20px"})
     # Keywords Statistics card
     keywords_stats_card = html.Div([
         html.Div([
@@ -1345,9 +1418,32 @@ def create_keywords_tab(
     else:
         database_time_fig = go.Figure().update_layout(title="No database time series data available")
     
+    # Create About modal for Keywords
+    about_modal = create_subtab_modal(
+        "about-keywords",
+        "About Keywords",
+        [
+            html.P([
+                "Keywords are automatically extracted terms that represent key concepts in the text. "
+                "NOTE: Keywords are extracted from ALL chunks in the corpus, not just those with taxonomic "
+                "classifications. This provides a comprehensive view of all content themes."
+            ]),
+            html.Ul([
+                html.Li("Unique Keywords: Distinct terms found across all chunks"),
+                html.Li("Total Occurrences: Sum of all keyword appearances"),
+                html.Li("Coverage: Percentage of ALL chunks containing keywords"),
+                html.Li("Top keywords show the most frequent concepts in the corpus")
+            ]),
+            html.P([
+                html.Strong("Important: "),
+                "Keyword statistics include both relevant and irrelevant chunks to provide complete corpus coverage."
+            ], className="text-info")
+        ]
+    )
+    
     # Combine everything into the tab layout
     keywords_tab = html.Div([
-        about_box,
+        header,
         
         dbc.Row([
             dbc.Col([
@@ -1384,7 +1480,10 @@ def create_keywords_tab(
         dcc.Graph(figure=database_time_fig),
         
         # Add database breakdown charts at the bottom
-        create_database_breakdown_charts('keyword', database_breakdown, "Keyword Coverage")
+        create_database_breakdown_charts('keyword', database_breakdown, "Keyword Coverage"),
+        
+        # Add the About modal
+        about_modal
     ])
     
     return keywords_tab
@@ -1427,26 +1526,18 @@ def create_named_entities_tab(
         )
     ], className="mb-3")
     
-    # About box for Named Entities tab
-    about_box = html.Div([
-        html.H5("About Named Entities", style={"color": "#13376f"}),
-        html.P([
-            "Named entities are automatically identified people, places, organizations, and other proper nouns "
-            "in the text. NOTE: Like keywords, named entities are extracted from ALL chunks in the corpus, "
-            "not just those with taxonomic classifications."
-        ]),
-        html.Ul([
-            html.Li("Entity Types: Categories like PERSON, ORG, GPE (geopolitical entities), LOC, etc."),
-            html.Li("Filter by Type: Use the dropdown above to focus on specific entity types"),
-            html.Li("Coverage: Percentage of ALL chunks containing named entities"),
-            html.Li("Top entities show the most mentioned people, places, and organizations")
-        ]),
-        html.P([
-            html.Strong("Important: "),
-            "Entity statistics include both relevant and irrelevant chunks. Use the entity type filter "
-            "to explore specific categories of entities."
-        ], className="text-info")
-    ], className="about-box mb-4")
+    # Create header with About button
+    header = html.Div([
+        html.H4("Named Entities Overview", style={"display": "inline-block", "margin-right": "20px"}),
+        dbc.Button(
+            "About", 
+            id="open-about-entities", 
+            color="secondary", 
+            size="sm",
+            className="ml-auto about-button",
+            style={"display": "inline-block"}
+        ),
+    ], style={"display": "flex", "align-items": "center", "margin-bottom": "20px"})
     
     # Named Entities Statistics card
     entities_stats_card = html.Div([
@@ -1721,9 +1812,33 @@ def create_named_entities_tab(
     else:
         database_time_fig = go.Figure().update_layout(title="No database time series data available")
     
+    # Create About modal for Named Entities
+    about_modal = create_subtab_modal(
+        "about-entities",
+        "About Named Entities",
+        [
+            html.P([
+                "Named entities are automatically identified people, places, organizations, and other proper nouns "
+                "in the text. NOTE: Like keywords, named entities are extracted from ALL chunks in the corpus, "
+                "not just those with taxonomic classifications."
+            ]),
+            html.Ul([
+                html.Li("Entity Types: Categories like PERSON, ORG, GPE (geopolitical entities), LOC, etc."),
+                html.Li("Filter by Type: Use the dropdown above to focus on specific entity types"),
+                html.Li("Coverage: Percentage of ALL chunks containing named entities"),
+                html.Li("Top entities show the most mentioned people, places, and organizations")
+            ]),
+            html.P([
+                html.Strong("Important: "),
+                "Entity statistics include both relevant and irrelevant chunks. Use the entity type filter "
+                "to explore specific categories of entities."
+            ], className="text-info")
+        ]
+    )
+    
     # Combine everything into the tab layout
     entities_tab = html.Div([
-        about_box,
+        header,
         
         # Add entity type filter
         entity_type_filter,
@@ -1765,7 +1880,10 @@ def create_named_entities_tab(
         dcc.Graph(figure=database_time_fig),
         
         # Add database breakdown charts at the bottom
-        create_database_breakdown_charts('entity', database_breakdown, "Entity Coverage")
+        create_database_breakdown_charts('entity', database_breakdown, "Entity Coverage"),
+        
+        # Add the About modal
+        about_modal
     ])
     
     return entities_tab
@@ -2102,3 +2220,63 @@ def register_sources_tab_callbacks(app):
         
         # Return with empty string for the loading spinner output
         return stats_html, updated_tabs, ""
+    
+    # Callback to toggle the Documents About modal
+    @app.callback(
+        Output("about-documents-modal", "is_open"),
+        [Input("open-about-documents", "n_clicks"), Input("close-about-documents", "n_clicks")],
+        [State("about-documents-modal", "is_open")],
+        prevent_initial_call=True
+    )
+    def toggle_documents_about_modal(n1, n2, is_open):
+        if n1 or n2:
+            return not is_open
+        return is_open
+    
+    # Callback to toggle the Chunks About modal
+    @app.callback(
+        Output("about-chunks-modal", "is_open"),
+        [Input("open-about-chunks", "n_clicks"), Input("close-about-chunks", "n_clicks")],
+        [State("about-chunks-modal", "is_open")],
+        prevent_initial_call=True
+    )
+    def toggle_chunks_about_modal(n1, n2, is_open):
+        if n1 or n2:
+            return not is_open
+        return is_open
+    
+    # Callback to toggle the Taxonomy About modal
+    @app.callback(
+        Output("about-taxonomy-modal", "is_open"),
+        [Input("open-about-taxonomy", "n_clicks"), Input("close-about-taxonomy", "n_clicks")],
+        [State("about-taxonomy-modal", "is_open")],
+        prevent_initial_call=True
+    )
+    def toggle_taxonomy_about_modal(n1, n2, is_open):
+        if n1 or n2:
+            return not is_open
+        return is_open
+    
+    # Callback to toggle the Keywords About modal
+    @app.callback(
+        Output("about-keywords-modal", "is_open"),
+        [Input("open-about-keywords", "n_clicks"), Input("close-about-keywords", "n_clicks")],
+        [State("about-keywords-modal", "is_open")],
+        prevent_initial_call=True
+    )
+    def toggle_keywords_about_modal(n1, n2, is_open):
+        if n1 or n2:
+            return not is_open
+        return is_open
+    
+    # Callback to toggle the Named Entities About modal
+    @app.callback(
+        Output("about-entities-modal", "is_open"),
+        [Input("open-about-entities", "n_clicks"), Input("close-about-entities", "n_clicks")],
+        [State("about-entities-modal", "is_open")],
+        prevent_initial_call=True
+    )
+    def toggle_entities_about_modal(n1, n2, is_open):
+        if n1 or n2:
+            return not is_open
+        return is_open
