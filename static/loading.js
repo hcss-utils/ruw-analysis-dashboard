@@ -36,111 +36,119 @@ window.addEventListener('DOMContentLoaded', function() {
         // Mark as enhanced
         element.dataset.enhanced = 'true';
         
-        // Hide any existing spinner content
-        const existingContent = element.querySelectorAll('svg, div');
-        existingContent.forEach(el => {
-            el.style.display = 'none';
-        });
+        // Hide the loading element itself
+        element.style.display = 'none';
+        element.style.visibility = 'hidden';
         
-        // Create radar pulse structure
-        const radarContainer = document.createElement('div');
-        radarContainer.className = 'radar-pulse-container';
-        radarContainer.style.cssText = `
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 100px;
-            height: 100px;
-            pointer-events: none;
-        `;
-        
-        // Create multiple pulse rings
-        for (let i = 0; i < 3; i++) {
-            const pulse = document.createElement('div');
-            pulse.className = 'radar-pulse-ring';
-            pulse.style.cssText = `
+        // Create horizontal radar sweep if not already present
+        if (!document.querySelector('.radar-sweep-container')) {
+            // Create radar sweep container
+            const sweepContainer = document.createElement('div');
+            sweepContainer.className = 'radar-sweep-container';
+            sweepContainer.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                pointer-events: none;
+                z-index: 9999;
+                overflow: hidden;
+            `;
+            
+            // Create the sweep band
+            const sweepBand = document.createElement('div');
+            sweepBand.className = 'radar-sweep-band';
+            sweepBand.style.cssText = `
                 position: absolute;
-                top: 50%;
-                left: 50%;
-                transform: translate(-50%, -50%);
-                width: 30px;
-                height: 30px;
-                border: 3px solid rgba(19, 55, 111, ${1 - i * 0.3});
-                border-radius: 50%;
-                animation: radarPulse 2s infinite ease-out;
-                animation-delay: ${i * 0.5}s;
+                top: 0;
+                left: -100%;
+                width: 100%;
+                height: 100%;
+                background: linear-gradient(
+                    to right,
+                    transparent 0%,
+                    rgba(19, 55, 111, 0.05) 20%,
+                    rgba(19, 55, 111, 0.1) 40%,
+                    rgba(19, 55, 111, 0.15) 50%,
+                    rgba(19, 55, 111, 0.1) 60%,
+                    rgba(19, 55, 111, 0.05) 80%,
+                    transparent 100%
+                );
+                animation: horizontalRadarSweep 2s ease-in-out infinite;
+            `;
+            
+            // Create subtle background overlay
+            const overlay = document.createElement('div');
+            overlay.className = 'radar-sweep-overlay';
+            overlay.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(255, 255, 255, 0.3);
                 pointer-events: none;
             `;
-            radarContainer.appendChild(pulse);
+            
+            sweepContainer.appendChild(overlay);
+            sweepContainer.appendChild(sweepBand);
+            document.body.appendChild(sweepContainer);
+            
+            // Remove after a timeout to ensure it's cleaned up
+            setTimeout(() => {
+                const container = document.querySelector('.radar-sweep-container');
+                if (container) {
+                    container.remove();
+                }
+            }, 10000); // Remove after 10 seconds max
         }
-        
-        // Create center dot
-        const centerDot = document.createElement('div');
-        centerDot.className = 'radar-center-dot';
-        centerDot.style.cssText = `
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 12px;
-            height: 12px;
-            background-color: #13376f;
-            border-radius: 50%;
-            box-shadow: 0 0 10px rgba(19, 55, 111, 0.6);
-            pointer-events: none;
-        `;
-        radarContainer.appendChild(centerDot);
-        
-        // Add radar to element
-        element.appendChild(radarContainer);
-        
-        // Ensure the element is visible and positioned correctly
-        element.style.position = 'fixed';
-        element.style.top = '50%';
-        element.style.left = '50%';
-        element.style.transform = 'translate(-50%, -50%)';
-        element.style.width = '120px';
-        element.style.height = '120px';
-        element.style.zIndex = '9999';
-        element.style.backgroundColor = 'rgba(255, 255, 255, 0.95)';
-        element.style.borderRadius = '10px';
-        element.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.15)';
-        element.style.display = 'flex';
-        element.style.alignItems = 'center';
-        element.style.justifyContent = 'center';
     }
     
     // Add the animation if not already present
-    if (!document.querySelector('#radar-pulse-animation')) {
+    if (!document.querySelector('#radar-sweep-animation')) {
         const style = document.createElement('style');
-        style.id = 'radar-pulse-animation';
+        style.id = 'radar-sweep-animation';
         style.textContent = `
-            @keyframes radarPulse {
+            @keyframes horizontalRadarSweep {
                 0% {
-                    width: 30px;
-                    height: 30px;
-                    opacity: 1;
-                    border-width: 3px;
+                    left: -100%;
                 }
                 100% {
-                    width: 100px;
-                    height: 100px;
-                    opacity: 0;
-                    border-width: 1px;
+                    left: 100%;
                 }
             }
             
-            /* Ensure Dash loading elements are visible when active */
-            ._dash-loading, ._dash-loading-callback {
-                display: flex !important;
+            /* Ensure radar sweep is visible */
+            .radar-sweep-container {
+                display: block !important;
                 visibility: visible !important;
             }
         `;
         document.head.appendChild(style);
     }
     
-    // Create custom loading indicator
+    // Watch for when loading completes to remove radar sweep
+    const cleanupObserver = new MutationObserver(function(mutations) {
+        // Check if any loading elements have been removed
+        const hasLoading = document.querySelector('._dash-loading, ._dash-loading-callback, div[data-dash-is-loading="true"]');
+        if (!hasLoading) {
+            const sweepContainer = document.querySelector('.radar-sweep-container');
+            if (sweepContainer) {
+                sweepContainer.remove();
+            }
+        }
+    });
+    
+    // Start observing for cleanup
+    cleanupObserver.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['data-dash-is-loading']
+    });
+    
+    // Create custom loading indicator for errors only
     var loadingDiv = document.createElement('div');
     loadingDiv.id = 'custom-loading-indicator';
     loadingDiv.style.position = 'fixed';
@@ -157,52 +165,10 @@ window.addEventListener('DOMContentLoaded', function() {
     // Loading text
     var loadingText = document.createElement('p');
     loadingText.textContent = 'Loading application components...';
-    loadingText.style.margin = '0 0 10px 0';
+    loadingText.style.margin = '0';
     loadingText.style.fontWeight = 'bold';
     
-    // Create radar pulse for custom loading
-    var radarDiv = document.createElement('div');
-    radarDiv.style.position = 'relative';
-    radarDiv.style.width = '100px';
-    radarDiv.style.height = '100px';
-    radarDiv.style.margin = '0 auto';
-    
-    // Create radar rings
-    for (let i = 0; i < 3; i++) {
-        const ring = document.createElement('div');
-        ring.style.cssText = `
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 30px;
-            height: 30px;
-            border: 3px solid rgba(19, 55, 111, ${1 - i * 0.3});
-            border-radius: 50%;
-            animation: radarPulse 2s infinite ease-out;
-            animation-delay: ${i * 0.5}s;
-        `;
-        radarDiv.appendChild(ring);
-    }
-    
-    // Add center dot
-    const dot = document.createElement('div');
-    dot.style.cssText = `
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 12px;
-        height: 12px;
-        background-color: #13376f;
-        border-radius: 50%;
-        box-shadow: 0 0 10px rgba(19, 55, 111, 0.6);
-    `;
-    radarDiv.appendChild(dot);
-    
-    // Assemble loading indicator
     loadingDiv.appendChild(loadingText);
-    loadingDiv.appendChild(radarDiv);
     document.body.appendChild(loadingDiv);
     
     // Show loading indicator on component loading errors

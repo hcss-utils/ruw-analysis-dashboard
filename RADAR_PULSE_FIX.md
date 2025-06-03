@@ -1,67 +1,74 @@
-# Radar Pulse Loading Animation Fix
+# Horizontal Radar Sweep Loading Animation
 
 ## Summary
-Fixed the radar pulse loading animation to ensure it displays properly when:
+Implemented a horizontal radar sweep loading animation that displays a translucent blue band sweeping across the screen from left to right when:
 1. Clicking on a segment in the Explore tab
 2. Filtering Named Entities by entity type in the Sources tab
 3. Any other loading scenario in the dashboard
 
 ## Changes Made
 
-### 1. Enhanced CSS Implementation (`static/custom.css`)
-- Added more specific CSS selectors to target Dash loading elements
-- Created multiple approaches to ensure the radar pulse displays:
-  - Direct targeting of `._dash-loading` and `._dash-loading-callback` classes
-  - Targeting `div[data-dash-is-loading="true"]` attributes
-  - Specific handling for graph and table pending states
-- Added semi-transparent overlay during loading
-- Ensured proper z-index layering (9999 for spinner, 9998 for overlay)
+### 1. CSS Implementation (`static/custom.css`)
+- Removed circular pulse animations
+- Implemented horizontal radar sweep with gradient opacity
+- The sweep band uses the same blue color (#13376f) as the About boxes
+- Added gradient effect: transparent → 5% → 10% → 15% (peak) → 10% → 5% → transparent
+- Semi-transparent white overlay (30% opacity) for subtle background dimming
+- Animation duration: 2 seconds, ease-in-out timing
 
 ### 2. JavaScript Enhancement (`static/loading.js`)
-- Added MutationObserver to watch for dynamically added loading elements
-- Created `enhanceLoadingSpinner()` function that:
-  - Hides default Dash spinner content
-  - Creates custom radar pulse structure with 3 expanding rings
-  - Adds center dot with glow effect
-  - Ensures proper positioning and visibility
-- Applied radar pulse to both Dash loading callbacks and error loading scenarios
+- Modified to create horizontal sweep instead of circular pulses
+- Creates a full-screen container with the sweeping band
+- Automatically cleans up after loading completes or after 10 seconds
+- Uses MutationObserver to detect when loading states change
+- Hides default Dash spinners completely
 
 ### 3. App Configuration (`app.py`)
-- Added loading.js script inclusion in the HTML template
-- Updated CSS version to force cache refresh (v=3)
+- Updated CSS version to v=4 for cache refresh
+- Updated loading.js version to v=3
 
 ## Technical Details
 
-### Radar Pulse Structure
+### Horizontal Radar Sweep Structure
 ```
-- 3 expanding circular rings with different delays (0s, 0.5s, 1s)
-- Ring colors with decreasing opacity (100%, 70%, 40%)
-- Center dot (12px) with box shadow glow
-- Animation duration: 2 seconds per cycle
-- Expansion from 30px to 100px diameter
+- Full-width gradient band (100% viewport width)
+- Sweeps from left (-100%) to right (100%)
+- Gradient opacity: 0% → 5% → 10% → 15% → 10% → 5% → 0%
+- Blue color: rgba(19, 55, 111, X) where X is the opacity
+- Background overlay: 30% white for subtle dimming
+- Animation: 2s ease-in-out infinite
 ```
 
-### CSS Specificity
-The implementation uses multiple targeting strategies to ensure compatibility:
-1. Class-based: `._dash-loading`, `._dash-loading-callback`
-2. Attribute-based: `div[data-dash-is-loading="true"]`
-3. State-based: `.dash-graph--pending`, `.dash-table--pending`
+### Animation Keyframes
+```css
+@keyframes radar-sweep {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+```
 
-### JavaScript Enhancement
-- Uses MutationObserver for performance
-- Marks enhanced elements to prevent duplicate processing
-- Creates DOM elements dynamically for maximum compatibility
-- Inline styles ensure visibility regardless of CSS load order
+### Cleanup Mechanism
+- Automatically removes sweep after loading completes
+- Fallback removal after 10 seconds
+- MutationObserver monitors for loading state changes
+
+## Visual Effect
+The loading animation now appears as:
+- A translucent blue band that sweeps horizontally across the entire screen
+- The band has varying opacity creating a gradient effect
+- Matches the blue theme color (#13376f) used in About boxes
+- Subtle white overlay dims the background slightly
+- Continuous sweeping motion from left to right
 
 ## Testing
 To verify the fix:
-1. Clear browser cache (Ctrl+F5)
+1. Clear browser cache (Ctrl+F5 or Cmd+Shift+R)
 2. Navigate to Explore tab and click on any sunburst segment
 3. Navigate to Sources tab > Named Entities subtab and change entity type filter
-4. The radar pulse should appear as expanding blue circles during data loading
+4. You should see a blue horizontal band sweeping across the screen during loading
 
 ## Browser Compatibility
 - Chrome/Edge: Full support
 - Firefox: Full support
-- Safari: Full support (with webkit prefixes handled)
-- IE11: Graceful degradation to standard spinner
+- Safari: Full support
+- IE11: Graceful degradation (no animation)
