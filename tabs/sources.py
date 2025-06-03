@@ -1975,11 +1975,10 @@ def register_sources_tab_callbacks(app):
             State("sources-database-dropdown", "value"),
             State("sources-source-type-dropdown", "value"),
             State("sources-date-range-picker", "start_date"),
-            State("sources-date-range-picker", "end_date"),
-            State("sources-subtabs", "value")
+            State("sources-date-range-picker", "end_date")
         ]
     )
-    def update_sources_tab(n_clicks, lang_val, db_val, source_type, start_date, end_date, active_tab):
+    def update_sources_tab(n_clicks, lang_val, db_val, source_type, start_date, end_date):
         """
         Update the Sources tab based on filter selections.
         
@@ -1995,36 +1994,8 @@ def register_sources_tab_callbacks(app):
         Returns:
             tuple: (stats_html, updated_tabs)
         """
-        # If the button wasn't clicked, return minimal data for lazy loading
-        if not n_clicks:
-            # Only fetch corpus stats for the header
-            corpus_stats = fetch_corpus_stats()
-            stats_html = html.Div([
-                html.P(f"Docs: {corpus_stats['docs_count']:,} ({corpus_stats['docs_rel_count']:,} rel) | Chunks: {corpus_stats['chunks_count']:,} ({corpus_stats['chunks_rel_count']:,} rel) | Tax: {corpus_stats['tax_levels']:,} levels | Items: {corpus_stats['items_count']:,}")
-            ])
-            
-            # Create placeholder content for tabs
-            loading_content = html.Div([
-                html.Div([
-                    html.H4("Click 'Apply Filters' to load data", className="text-center mb-3"),
-                    html.P("Data will be loaded when you apply filters. This improves initial page load time.", 
-                          className="text-center text-muted")
-                ], className="p-5")
-            ])
-            
-            # Return placeholder tabs
-            updated_tabs = [
-                dcc.Tab(label="Documents", children=loading_content),
-                dcc.Tab(label="Chunks", children=loading_content),
-                dcc.Tab(label="Taxonomy Combinations", children=loading_content),
-                dcc.Tab(label="Keywords", children=loading_content),
-                dcc.Tab(label="Named Entities", children=loading_content)
-            ]
-            
-            # Return with empty string for the loading spinner output
-            return stats_html, updated_tabs, ""
-    
-        # Create date range tuple if both dates are provided
+        # Process filters regardless of whether button was clicked
+        # This ensures data loads on initial page load
         date_range = None
         if start_date is not None and end_date is not None:
             date_range = (start_date, end_date)
