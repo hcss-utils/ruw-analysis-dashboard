@@ -1961,6 +1961,9 @@ def create_sources_tab_layout(db_options: List, min_date: datetime = None, max_d
     sources_tab = html.Div([
         corpus_overview,
         
+        # Add result stats div that the callback expects
+        html.Div(id="sources-result-stats", className="mb-3"),
+        
         # Wrap subtabs in loading component for radar pulse effect
         dcc.Loading(
             id="sources-main-loading",
@@ -2086,8 +2089,7 @@ def register_sources_tab_callbacks(app):
             Output("sources-subtabs", "children")
         ],
         [
-            Input("sources-filter-button", "n_clicks"),
-            Input("sources-subtabs", "id")  # This triggers on initial load
+            Input("sources-filter-button", "n_clicks")
         ],
         [
             State("sources-language-dropdown", "value"),
@@ -2095,9 +2097,10 @@ def register_sources_tab_callbacks(app):
             State("sources-source-type-dropdown", "value"),
             State("sources-date-range-picker", "start_date"),
             State("sources-date-range-picker", "end_date")
-        ]
+        ],
+        prevent_initial_call=False  # Ensure it runs on initial load
     )
-    def update_sources_tab(n_clicks, tab_id, lang_val, db_val, source_type, start_date, end_date):
+    def update_sources_tab(n_clicks, lang_val, db_val, source_type, start_date, end_date):
         """
         Update the Sources tab based on filter selections.
         
@@ -2113,7 +2116,7 @@ def register_sources_tab_callbacks(app):
         Returns:
             tuple: (stats_html, updated_tabs)
         """
-        logging.info(f"Sources tab callback triggered - n_clicks: {n_clicks}, tab_id: {tab_id}")
+        logging.info(f"Sources tab callback triggered - n_clicks: {n_clicks}")
         
         # Process filters regardless of whether button was clicked
         # This ensures data loads on initial page load
