@@ -2086,7 +2086,8 @@ def register_sources_tab_callbacks(app):
             Output("sources-subtabs", "children")
         ],
         [
-            Input("sources-filter-button", "n_clicks")
+            Input("sources-filter-button", "n_clicks"),
+            Input("sources-subtabs", "id")  # This triggers on initial load
         ],
         [
             State("sources-language-dropdown", "value"),
@@ -2096,22 +2097,23 @@ def register_sources_tab_callbacks(app):
             State("sources-date-range-picker", "end_date")
         ]
     )
-    def update_sources_tab(n_clicks, lang_val, db_val, source_type, start_date, end_date):
+    def update_sources_tab(n_clicks, tab_id, lang_val, db_val, source_type, start_date, end_date):
         """
         Update the Sources tab based on filter selections.
         
         Args:
             n_clicks: Number of button clicks
+            tab_id: Tab ID (used for initial load trigger)
             lang_val: Selected language
             db_val: Selected database
             source_type: Selected source type
             start_date: Start date
             end_date: End date
-            active_tab: Currently active tab
             
         Returns:
             tuple: (stats_html, updated_tabs)
         """
+        logging.info(f"Sources tab callback triggered - n_clicks: {n_clicks}, tab_id: {tab_id}")
         # Process filters regardless of whether button was clicked
         # This ensures data loads on initial page load
         date_range = None
@@ -2136,12 +2138,26 @@ def register_sources_tab_callbacks(app):
             html.P(f"Filters: {' | '.join(filter_desc) if filter_desc else 'None'}", className="text-muted")
         ])
         
-        # Fetch filtered data
-        taxonomy_data = fetch_taxonomy_combinations(lang_val, db_val, source_type, date_range)
-        chunks_data = fetch_chunks_data(lang_val, db_val, source_type, date_range)
-        documents_data = fetch_documents_data(lang_val, db_val, source_type, date_range)
-        keywords_data = fetch_keywords_data(lang_val, db_val, source_type, date_range)
-        named_entities_data = fetch_named_entities_data(lang_val, db_val, source_type, date_range)
+        # Fetch filtered data with error handling
+        try:
+            logging.info("Starting to fetch data for Sources tab")
+            taxonomy_data = fetch_taxonomy_combinations(lang_val, db_val, source_type, date_range)
+            logging.info("Taxonomy data fetched")
+            
+            chunks_data = fetch_chunks_data(lang_val, db_val, source_type, date_range)
+            logging.info("Chunks data fetched")
+            
+            documents_data = fetch_documents_data(lang_val, db_val, source_type, date_range)
+            logging.info("Documents data fetched")
+            
+            keywords_data = fetch_keywords_data(lang_val, db_val, source_type, date_range)
+            logging.info("Keywords data fetched")
+            
+            named_entities_data = fetch_named_entities_data(lang_val, db_val, source_type, date_range)
+            logging.info("Named entities data fetched")
+        except Exception as e:
+            logging.error(f"Error fetching data: {e}")
+            return html.Div(f"Error loading data: {str(e)}"), []
         
         # Get time series data
         doc_time_series = fetch_time_series_data('document', lang_val, db_val, source_type, date_range)
