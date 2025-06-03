@@ -251,60 +251,82 @@ body, html {
     width: 120px !important;
     height: 120px !important;
     z-index: 9999 !important;
-    background: none !important;
-    border: none !important;
+    background-color: rgba(255, 255, 255, 0.9) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1) !important;
+    padding: 20px !important;
 }
 
-/* Hide the default spinner */
+/* Hide ALL default spinner elements */
+._dash-loading-callback,
+._dash-loading > div,
+.dash-spinner,
+.dash-spinner SVG,
+.dash-sk-circle {
+    display: none !important;
+}
+
+/* Create custom radar pulse container */
 ._dash-loading::before {
-    content: none !important;
+    content: '' !important;
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    width: 30px !important;
+    height: 30px !important;
+    border: 3px solid rgba(19, 55, 111, 1) !important;
+    border-radius: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    animation: radar-pulse-simple 2s infinite ease-out !important;
 }
 
-/* Create radar pulse effect */
+/* Second pulse ring */
 ._dash-loading::after {
     content: '' !important;
     position: absolute !important;
     top: 50% !important;
     left: 50% !important;
-    width: 20px !important;
-    height: 20px !important;
-    border: 3px solid rgba(19, 55, 111, 0.8) !important;
+    width: 30px !important;
+    height: 30px !important;
+    border: 3px solid rgba(19, 55, 111, 0.7) !important;
     border-radius: 50% !important;
     transform: translate(-50%, -50%) !important;
     animation: radar-pulse-simple 2s infinite ease-out !important;
+    animation-delay: 0.7s !important;
 }
 
-/* Additional pulse rings */
+/* Third pulse ring for radar-loading class */
 .radar-loading ._dash-loading::before {
+    animation-delay: 0.3s !important;
+}
+
+/* Center dot */
+._dash-loading > *::before {
     content: '' !important;
     position: absolute !important;
     top: 50% !important;
     left: 50% !important;
-    width: 20px !important;
-    height: 20px !important;
-    border: 3px solid rgba(19, 55, 111, 0.6) !important;
+    width: 10px !important;
+    height: 10px !important;
+    background-color: #13376f !important;
     border-radius: 50% !important;
     transform: translate(-50%, -50%) !important;
-    animation: radar-pulse-simple 2s infinite ease-out !important;
-    animation-delay: 0.5s !important;
+    z-index: 10 !important;
 }
 
 @keyframes radar-pulse-simple {
     0% {
-        width: 20px;
-        height: 20px;
+        width: 30px;
+        height: 30px;
         opacity: 1;
+        border-width: 3px;
     }
     100% {
         width: 100px;
         height: 100px;
         opacity: 0;
+        border-width: 1px;
     }
-}
-
-/* Consistent spinner styling */
-.dash-spinner {
-    display: none !important;
 }
 
 /* =========== Modal Styling =========== */
