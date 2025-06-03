@@ -1442,7 +1442,7 @@ def fetch_keywords_data(
                 FROM document_section_chunk dsc
                 JOIN document_section ds ON dsc.document_section_id = ds.id
                 JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
-                -- TEMPORARILY DISABLED: INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
+                INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                 WHERE dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0
                 {filter_sql}
             )
@@ -1733,7 +1733,7 @@ def fetch_named_entities_data(
                 FROM document_section_chunk dsc
                 JOIN document_section ds ON dsc.document_section_id = ds.id
                 JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
-                -- TEMPORARILY DISABLED: INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
+                INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                 WHERE dsc.named_entities IS NOT NULL 
                     AND jsonb_typeof(dsc.named_entities) = 'array'
                     AND jsonb_array_length(dsc.named_entities) > 0
