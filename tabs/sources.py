@@ -2115,15 +2115,6 @@ def register_sources_tab_callbacks(app):
         """
         logging.info(f"Sources tab callback triggered - n_clicks: {n_clicks}, tab_id: {tab_id}")
         
-        # Return a simple test message first to see if callback works
-        if True:  # Temporary test
-            test_stats = html.Div("Sources callback is working!", style={"color": "green", "font-weight": "bold"})
-            test_tabs = [
-                dcc.Tab(label="Test Tab 1", children=html.Div("Test content 1")),
-                dcc.Tab(label="Test Tab 2", children=html.Div("Test content 2"))
-            ]
-            return test_stats, test_tabs
-        
         # Process filters regardless of whether button was clicked
         # This ensures data loads on initial page load
         date_range = None
@@ -2385,36 +2376,36 @@ def register_sources_tab_callbacks(app):
         # Fetch filtered data
         documents_data = fetch_documents_data(lang_val, db_val, source_type, date_range)
         chunks_data = fetch_chunks_data(lang_val, db_val, source_type, date_range)
-        taxonomy_data = fetch_taxonomy_combinations_data(lang_val, db_val, source_type, date_range)
+        taxonomy_data = fetch_taxonomy_combinations(lang_val, db_val, source_type, date_range)  # Fixed function name
         keywords_data = fetch_keywords_data(lang_val, db_val, source_type, date_range)
         named_entities_data = fetch_named_entities_data(lang_val, db_val, source_type, date_range)
         
         # Fetch time series data
-        doc_time_series = fetch_sources_time_series(lang_val, db_val, source_type, date_range, 'document')
-        chunk_time_series = fetch_sources_time_series(lang_val, db_val, source_type, date_range, 'chunk')
-        tax_time_series = fetch_sources_time_series(lang_val, db_val, source_type, date_range, 'taxonomy')
-        keyword_time_series = fetch_sources_time_series(lang_val, db_val, source_type, date_range, 'keyword')
-        entity_time_series = fetch_sources_time_series(lang_val, db_val, source_type, date_range, 'entity')
+        doc_time_series = fetch_time_series_data('document', lang_val, db_val, source_type, date_range)
+        chunk_time_series = fetch_time_series_data('chunk', lang_val, db_val, source_type, date_range)
+        tax_time_series = fetch_time_series_data('taxonomy', lang_val, db_val, source_type, date_range)
+        keyword_time_series = fetch_time_series_data('keyword', lang_val, db_val, source_type, date_range)
+        entity_time_series = fetch_time_series_data('entity', lang_val, db_val, source_type, date_range)
         
         # Fetch language time series
-        doc_lang_time_series = fetch_language_time_series(lang_val, db_val, source_type, date_range, 'document')
-        chunk_lang_time_series = fetch_language_time_series(lang_val, db_val, source_type, date_range, 'chunk')
-        tax_lang_time_series = fetch_language_time_series(lang_val, db_val, source_type, date_range, 'taxonomy')
-        keyword_lang_time_series = fetch_language_time_series(lang_val, db_val, source_type, date_range, 'keyword')
-        entity_lang_time_series = fetch_language_time_series(lang_val, db_val, source_type, date_range, 'entity')
+        doc_lang_time_series = fetch_language_time_series('document', lang_val, db_val, source_type, date_range)
+        chunk_lang_time_series = fetch_language_time_series('chunk', lang_val, db_val, source_type, date_range)
+        tax_lang_time_series = fetch_language_time_series('taxonomy', lang_val, db_val, source_type, date_range)
+        keyword_lang_time_series = fetch_language_time_series('keyword', lang_val, db_val, source_type, date_range)
+        entity_lang_time_series = fetch_language_time_series('entity', lang_val, db_val, source_type, date_range)
         
         # Fetch database time series
-        doc_db_time_series = fetch_database_time_series(lang_val, db_val, source_type, date_range, 'document')
-        chunk_db_time_series = fetch_database_time_series(lang_val, db_val, source_type, date_range, 'chunk')
-        tax_db_time_series = fetch_database_time_series(lang_val, db_val, source_type, date_range, 'taxonomy')
-        keyword_db_time_series = fetch_database_time_series(lang_val, db_val, source_type, date_range, 'keyword')
-        entity_db_time_series = fetch_database_time_series(lang_val, db_val, source_type, date_range, 'entity')
+        doc_db_time_series = fetch_database_time_series('document', lang_val, db_val, source_type, date_range)
+        chunk_db_time_series = fetch_database_time_series('chunk', lang_val, db_val, source_type, date_range)
+        tax_db_time_series = fetch_database_time_series('taxonomy', lang_val, db_val, source_type, date_range)
+        keyword_db_time_series = fetch_database_time_series('keyword', lang_val, db_val, source_type, date_range)
+        entity_db_time_series = fetch_database_time_series('entity', lang_val, db_val, source_type, date_range)
         
         # Fetch database breakdown data
-        doc_db_breakdown = fetch_database_breakdown(lang_val, db_val, source_type, date_range, 'document')
-        chunk_db_breakdown = fetch_database_breakdown(lang_val, db_val, source_type, date_range, 'chunk')
-        keyword_db_breakdown = fetch_database_breakdown(lang_val, db_val, source_type, date_range, 'keyword')
-        entity_db_breakdown = fetch_database_breakdown(lang_val, db_val, source_type, date_range, 'entity')
+        doc_db_breakdown = fetch_database_breakdown('document', lang_val, db_val, source_type, date_range)
+        chunk_db_breakdown = fetch_database_breakdown('chunk', lang_val, db_val, source_type, date_range)
+        keyword_db_breakdown = fetch_database_breakdown('keyword', lang_val, db_val, source_type, date_range)
+        entity_db_breakdown = fetch_database_breakdown('entity', lang_val, db_val, source_type, date_range)
         
         # Filter named entities data by entity type if not "ALL"
         if entity_type != 'ALL':
