@@ -111,17 +111,20 @@ def create_dash_app() -> dash.Dash:
     # Comment this out during development
     # auth = dash_auth.BasicAuth(app, VALID_USERNAME_PASSWORD_PAIRS)
     
-    # Load keyword mapping files
-    try:
-        success, message = load_mapping_files()
-        if success:
-            logging.info(f"Keyword mapping files loaded successfully: {message}")
-            mapping_status = get_mapping_status()
-            logging.info(f"Mapping status: {mapping_status}")
-        else:
-            logging.warning(f"Failed to load keyword mapping files: {message}")
-    except Exception as e:
-        logging.error(f"Error loading keyword mapping files: {e}")
+    # Load keyword mapping files ONLY ONCE
+    # Check if already loaded to avoid reloading in debug mode
+    if not hasattr(app, '_keywords_loaded'):
+        try:
+            success, message = load_mapping_files()
+            if success:
+                logging.info(f"Keyword mapping files loaded successfully: {message}")
+                mapping_status = get_mapping_status()
+                logging.info(f"Mapping status: {mapping_status}")
+                app._keywords_loaded = True
+            else:
+                logging.warning(f"Failed to load keyword mapping files: {message}")
+        except Exception as e:
+            logging.error(f"Error loading keyword mapping files: {e}")
     
     # Fetch initial data
     db_options = []
@@ -185,11 +188,43 @@ def create_dash_app() -> dash.Dash:
             {%css%}
             <link rel="stylesheet" href="/static/custom.css?v=4">
             <link rel="stylesheet" href="/static/responsive-fix.css?v=1">
+            <link rel="stylesheet" href="/static/radar-override.css?v=1">
             <!-- Preload critical scripts to prevent loading errors -->
             <link rel="preload" href="/_dash-component-suites/dash/dcc/async-slider.js" as="script">
             <link rel="preload" href="/_dash-component-suites/dash/dcc/async-graph.js" as="script">
             <link rel="preload" href="/_dash-component-suites/dash/dcc/async-plotlyjs.js" as="script">
             <script src="/static/dash-loading-monitor.js?v=1"></script>
+            <script src="/static/progressive-loading.js?v=1"></script>
+            <script>
+                // Inline radar pulse fix for chunks
+                document.addEventListener('DOMContentLoaded', function() {
+                    console.log('[Inline Fix] Setting up chunk detection');
+                    
+                    // Check every 500ms for chunks
+                    setInterval(function() {
+                        const chunksContainer = document.getElementById('explore-chunks-container');
+                        const chunksTitle = document.getElementById('chunks-selection-title');
+                        
+                        if (chunksContainer && chunksContainer.children.length > 0 && 
+                            chunksTitle && chunksTitle.textContent && 
+                            chunksTitle.textContent.includes('Text Chunks for:')) {
+                            
+                            // We have chunks! Remove ALL radar elements
+                            const radars = document.querySelectorAll('.dash-loading-radar-sweep, ._dash-loading, .dash-spinner');
+                            radars.forEach(function(el) {
+                                el.style.display = 'none';
+                                el.remove();
+                            });
+                            
+                            // Also hide any Dash loading states
+                            const loadingDivs = document.querySelectorAll('[data-dash-is-loading="true"]');
+                            loadingDivs.forEach(function(el) {
+                                el.setAttribute('data-dash-is-loading', 'false');
+                            });
+                        }
+                    }, 500);
+                });
+            </script>
             <script>
                 // Error handler for async component loading
                 window.addEventListener('error', function(e) {
@@ -529,7 +564,7 @@ def main():
     try:
         port = int(os.environ.get("PORT", 8051))
         # Use app.run() instead of app.run_server()
-        app.run(debug=True, host='0.0.0.0', port=port)
+        app.run(debug=False, host='0.0.0.0', port=port)  # Disable debug to avoid double loading
         
     except Exception as e:
         logging.error(f"Error starting application: {e}")

@@ -41,17 +41,31 @@ def create_explore_tab_layout(db_options: List, min_date: datetime = None, max_d
     Returns:
         html.Div: Explore tab layout
     """
-    # Try to get initial data for the sunburst chart
-    try:
-        df_init = fetch_category_data()
-        if df_init is None or df_init.empty:
-            df_init = pd.DataFrame(columns=['category', 'subcategory', 'sub_subcategory', 'count'])
-    except Exception as e:
-        logging.error(f"Error fetching initial data for Explore tab: {e}")
-        df_init = pd.DataFrame(columns=['category', 'subcategory', 'sub_subcategory', 'count'])
-
-    # Create initial sunburst chart with updated title
-    fig_init = create_sunburst_chart(df_init, title="Taxonomic Element Distribution")
+    # Create empty initial chart - data will be loaded via callback
+    # This prevents slow initial page load
+    df_init = pd.DataFrame(columns=['category', 'subcategory', 'sub_subcategory', 'count'])
+    
+    # Create placeholder sunburst chart
+    fig_init = go.Figure()
+    fig_init.update_layout(
+        title={
+            'text': "Click 'Apply Filters' to load data",
+            'font': {'size': 24, 'color': '#2196F3'},
+            'x': 0.5,
+            'y': 0.95
+        },
+        height=700,
+        autosize=True,
+        annotations=[{
+            'text': 'No filters applied yet',
+            'xref': 'paper',
+            'yref': 'paper',
+            'x': 0.5,
+            'y': 0.5,
+            'showarrow': False,
+            'font': {'size': 18, 'color': '#666'}
+        }]
+    )
     
     # Create pagination controls
     pagination_controls = create_pagination_controls("explore")
@@ -192,6 +206,10 @@ def create_explore_tab_layout(db_options: List, min_date: datetime = None, max_d
         dcc.Store(id='current-page-store', data=0),
         dcc.Store(id='current-selection-store'),  # Store selected level and value
         
+        # Progressive loading signals
+        dcc.Store(id='sunburst-loading-complete', data=False),
+        dcc.Store(id='chunks-loading-complete', data=False),
+        
         # Hidden div for scrolling
         html.Div(id='dummy-scroll-div', style={'display': 'none'}),
         
@@ -261,7 +279,8 @@ def register_explore_callbacks(app):
             State('explore-source-type-dropdown', 'value'),
             State('explore-date-range-picker', 'start_date'),
             State('explore-date-range-picker', 'end_date')
-        ]
+        ],
+        prevent_initial_call=False  # Load sunburst on page load
     )
     def update_sunburst(n_clicks, lang_val, db_val, source_type, start_date, end_date):
         """
