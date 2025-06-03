@@ -1,0 +1,43 @@
+/* Emergency override to hide radar pulse when chunks are visible */
+
+/* If chunks container has children, hide all loading indicators */
+#explore-chunks-container:not(:empty) ~ * ._dash-loading,
+#explore-chunks-container:not(:empty) ~ * .dash-loading-radar-sweep,
+#explore-chunks-container:not(:empty) ~ * .dash-spinner {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+}
+
+/* Also hide if chunks selection title has content */
+#chunks-selection-title:not(:empty) ~ * ._dash-loading,
+#chunks-selection-title:not(:empty) ~ * .dash-loading-radar-sweep,
+#chunks-selection-title:not(:empty) ~ * .dash-spinner {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+}
+
+/* Global override - if we have chunks, no radar anywhere */
+body:has(#explore-chunks-container > *) .dash-loading-radar-sweep,
+body:has(#explore-chunks-container > *) ._dash-loading,
+body:has(#explore-chunks-container > *) .dash-spinner {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+}
+
+/* Additional check - if title contains "Text Chunks for:" */
+body:has(#chunks-selection-title:contains("Text Chunks for:")) .dash-loading-radar-sweep {
+    display: none !important;
+}
+
+/* Force hide after 5 seconds as fallback */
+.dash-loading-radar-sweep {
+    animation: hideAfterDelay 5s forwards;
+}
+
+@keyframes hideAfterDelay {
+    0%, 99% { opacity: 1; }
+    100% { opacity: 0; display: none; }
+}

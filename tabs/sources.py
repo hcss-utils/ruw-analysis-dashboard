@@ -1936,18 +1936,8 @@ def create_sources_tab_layout(db_options: List, min_date: datetime = None, max_d
     
     # Create placeholder content for lazy loading
     loading_content = html.Div([
-        dcc.Loading(
-            type="circle",  # Use circle type for radar pulse effect
-            color="#13376f",
-            className="radar-loading",
-            children=[
-                html.Div([
-                    html.H4("Loading data...", className="text-center mb-3"),
-                    html.P("This may take a moment on first load. Data will be cached for faster access later.", 
-                          className="text-center text-muted")
-                ], className="p-5")
-            ]
-        )
+        html.P("Click 'Apply Filters' to load data", 
+               style={'text-align': 'center', 'color': '#666', 'font-style': 'italic', 'padding': '40px'})
     ])
     
     # Create initial placeholder tabs
@@ -2098,7 +2088,7 @@ def register_sources_tab_callbacks(app):
             State("sources-date-range-picker", "start_date"),
             State("sources-date-range-picker", "end_date")
         ],
-        prevent_initial_call=False  # Ensure it runs on initial load
+        prevent_initial_call=True  # Don't load any data until filters are applied
     )
     def update_sources_tab(n_clicks, lang_val, db_val, source_type, start_date, end_date):
         """
@@ -2142,9 +2132,40 @@ def register_sources_tab_callbacks(app):
             html.P(f"Filters: {' | '.join(filter_desc) if filter_desc else 'None'}", className="text-muted")
         ])
         
+        # Check if this is initial load (no filters applied)
+        is_initial_load = (n_clicks is None or n_clicks == 0) and lang_val == 'ALL' and db_val == 'ALL'
+        
+        # For initial load, return empty state with instruction
+        if is_initial_load:
+            logging.info("Sources tab initial load - returning empty state")
+            
+            # Return empty stats and placeholder tabs
+            stats_html = html.Div([
+                html.P("Click 'Apply Filters' to load data", 
+                      style={'text-align': 'center', 'color': '#666', 'font-style': 'italic', 'padding': '20px'})
+            ])
+            
+            # Create empty placeholder tabs
+            placeholder_content = html.Div([
+                html.P("Apply filters to view data", 
+                      style={'text-align': 'center', 'color': '#999', 'padding': '40px', 'font-style': 'italic'})
+            ])
+            
+            placeholder_tabs = [
+                dcc.Tab(label="Documents", children=placeholder_content),
+                dcc.Tab(label="Chunks", children=placeholder_content),
+                dcc.Tab(label="Taxonomy Combinations", children=placeholder_content),
+                dcc.Tab(label="Keywords", children=placeholder_content),
+                dcc.Tab(label="Named Entities", children=placeholder_content)
+            ]
+            
+            return stats_html, placeholder_tabs
+        
         # Fetch filtered data with error handling
         try:
-            logging.info("Starting to fetch data for Sources tab")
+            logging.info(f"Starting to fetch data for Sources tab with filters")
+            
+            # Full data fetch when filters are applied
             taxonomy_data = fetch_taxonomy_combinations(lang_val, db_val, source_type, date_range)
             logging.info("Taxonomy data fetched")
             
@@ -2163,43 +2184,43 @@ def register_sources_tab_callbacks(app):
             logging.error(f"Error fetching data: {e}")
             return html.Div(f"Error loading data: {str(e)}"), []
         
-        # Get time series data with error handling
+        # Get time series data with error handling - ONLY for the active subtab later
+        # For now, we'll fetch minimal time series data
         try:
-            logging.info("Fetching time series data")
+            logging.info("Fetching minimal time series data")
+            # Only fetch document time series initially as it's most likely to be viewed first
             doc_time_series = fetch_time_series_data('document', lang_val, db_val, source_type, date_range)
-            chunk_time_series = fetch_time_series_data('chunk', lang_val, db_val, source_type, date_range)
-            taxonomy_time_series = fetch_time_series_data('taxonomy', lang_val, db_val, source_type, date_range)
-            keyword_time_series = fetch_time_series_data('keyword', lang_val, db_val, source_type, date_range)
-            entity_time_series = fetch_time_series_data('entity', lang_val, db_val, source_type, date_range)
-            logging.info("Time series data fetched")
+            doc_lang_time_series = fetch_language_time_series('document', lang_val, db_val, source_type, date_range)
+            doc_db_time_series = fetch_database_time_series('document', lang_val, db_val, source_type, date_range)
+            doc_db_breakdown = fetch_database_breakdown('document', lang_val, db_val, source_type, date_range)
+            logging.info("Initial time series data fetched")
         except Exception as e:
             logging.error(f"Error fetching time series data: {e}")
             # Use empty dataframes as fallback
             doc_time_series = pd.DataFrame()
-            chunk_time_series = pd.DataFrame()
-            taxonomy_time_series = pd.DataFrame()
-            keyword_time_series = pd.DataFrame()
-            entity_time_series = pd.DataFrame()
+            doc_lang_time_series = pd.DataFrame()
+            doc_db_time_series = pd.DataFrame()
+            doc_db_breakdown = None
         
-        # Get language time series data
-        doc_lang_time_series = fetch_language_time_series('document', lang_val, db_val, source_type, date_range)
-        chunk_lang_time_series = fetch_language_time_series('chunk', lang_val, db_val, source_type, date_range)
-        taxonomy_lang_time_series = fetch_language_time_series('taxonomy', lang_val, db_val, source_type, date_range)
-        keyword_lang_time_series = fetch_language_time_series('keyword', lang_val, db_val, source_type, date_range)
-        entity_lang_time_series = fetch_language_time_series('entity', lang_val, db_val, source_type, date_range)
+        # For other tabs, use empty data initially - they can be loaded on demand
+        chunk_time_series = pd.DataFrame()
+        chunk_lang_time_series = pd.DataFrame()
+        chunk_db_time_series = pd.DataFrame()
+        chunk_db_breakdown = None
         
-        # Get database time series data
-        doc_db_time_series = fetch_database_time_series('document', lang_val, db_val, source_type, date_range)
-        chunk_db_time_series = fetch_database_time_series('chunk', lang_val, db_val, source_type, date_range)
-        taxonomy_db_time_series = fetch_database_time_series('taxonomy', lang_val, db_val, source_type, date_range)
-        keyword_db_time_series = fetch_database_time_series('keyword', lang_val, db_val, source_type, date_range)
-        entity_db_time_series = fetch_database_time_series('entity', lang_val, db_val, source_type, date_range)
+        taxonomy_time_series = pd.DataFrame()
+        taxonomy_lang_time_series = pd.DataFrame()
+        taxonomy_db_time_series = pd.DataFrame()
         
-        # Get database breakdown data with filters
-        doc_db_breakdown = fetch_database_breakdown('document', lang_val, db_val, source_type, date_range)
-        chunk_db_breakdown = fetch_database_breakdown('chunk', lang_val, db_val, source_type, date_range)
-        keyword_db_breakdown = fetch_database_breakdown('keyword', lang_val, db_val, source_type, date_range)
-        entity_db_breakdown = fetch_database_breakdown('entity', lang_val, db_val, source_type, date_range)
+        keyword_time_series = pd.DataFrame()
+        keyword_lang_time_series = pd.DataFrame()
+        keyword_db_time_series = pd.DataFrame()
+        keyword_db_breakdown = None
+        
+        entity_time_series = pd.DataFrame()
+        entity_lang_time_series = pd.DataFrame()
+        entity_db_time_series = pd.DataFrame()
+        entity_db_breakdown = None
         
         # Create updated tabs
         documents_subtab = create_documents_tab(
