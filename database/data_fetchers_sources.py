@@ -25,7 +25,7 @@ from utils.cache import cached
 from config import SOURCE_TYPE_FILTERS
 
 
-@cached(timeout=600)
+@cached(timeout=3600)
 def fetch_corpus_stats():
     """
     Fetch overall corpus statistics for the Sources tab.
@@ -181,7 +181,7 @@ def fetch_corpus_stats():
                 "items_count": 0
             }
 
-@cached(timeout=600)
+@cached(timeout=3600)
 def fetch_taxonomy_combinations(
     lang_val: Optional[str] = None,
     db_val: Optional[str] = None,
@@ -385,7 +385,7 @@ def fetch_taxonomy_combinations(
         }
 
 
-@cached(timeout=600)
+@cached(timeout=3600)
 def fetch_chunks_data(
     lang_val: Optional[str] = None,
     db_val: Optional[str] = None,
@@ -552,7 +552,7 @@ def fetch_chunks_data(
         }
 
 
-@cached(timeout=600)
+@cached(timeout=3600)
 def fetch_documents_data(
     lang_val: Optional[str] = None,
     db_val: Optional[str] = None,
@@ -725,9 +725,9 @@ def fetch_documents_data(
         }
 
 
-@cached(timeout=600)
+@cached(timeout=3600)
 def fetch_time_series_data(
-    entity_type: str,  # 'document', 'chunk', or 'taxonomy'
+    entity_type: str,  # 'document', 'chunk', 'taxonomy', 'keyword', or 'entity'
     lang_val: Optional[str] = None,
     db_val: Optional[str] = None,
     source_type: Optional[str] = None,
@@ -738,7 +738,7 @@ def fetch_time_series_data(
     Fetch time series data with optional filters.
     
     Args:
-        entity_type: Type of entity ('document', 'chunk', or 'taxonomy')
+        entity_type: Type of entity ('document', 'chunk', 'taxonomy', 'keyword', or 'entity')
         lang_val: Language filter value
         db_val: Database filter value
         source_type: Source type filter value
@@ -806,6 +806,47 @@ def fetch_time_series_data(
                 GROUP BY {date_trunc}
                 ORDER BY date;
                 """
+            elif entity_type == 'keyword':
+                query = f"""
+                WITH keyword_data AS (
+                    SELECT 
+                        ud.date,
+                        unnest(dsc.keywords) as keyword
+                    FROM document_section_chunk dsc
+                    JOIN document_section ds ON dsc.document_section_id = ds.id
+                    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                    WHERE ud.date IS NOT NULL AND dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0
+                    {filter_sql}
+                )
+                SELECT 
+                    DATE_TRUNC('{granularity}', date) as date,
+                    COUNT(*) as count
+                FROM keyword_data
+                GROUP BY DATE_TRUNC('{granularity}', date)
+                ORDER BY date;
+                """
+            elif entity_type == 'entity':
+                query = f"""
+                WITH entity_data AS (
+                    SELECT 
+                        ud.date,
+                        jsonb_array_elements(dsc.named_entities) as entity
+                    FROM document_section_chunk dsc
+                    JOIN document_section ds ON dsc.document_section_id = ds.id
+                    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                    WHERE ud.date IS NOT NULL 
+                        AND dsc.named_entities IS NOT NULL 
+                        AND jsonb_typeof(dsc.named_entities) = 'array'
+                        AND jsonb_array_length(dsc.named_entities) > 0
+                    {filter_sql}
+                )
+                SELECT 
+                    DATE_TRUNC('{granularity}', date) as date,
+                    COUNT(*) as count
+                FROM entity_data
+                GROUP BY DATE_TRUNC('{granularity}', date)
+                ORDER BY date;
+                """
             else:
                 logging.error(f"Invalid entity type: {entity_type}")
                 return pd.DataFrame(columns=['date', 'count'])
@@ -826,9 +867,9 @@ def fetch_time_series_data(
         return pd.DataFrame(columns=['date', 'count'])
 
 
-@cached(timeout=600)
+@cached(timeout=3600)
 def fetch_language_time_series(
-    entity_type: str,  # 'document', 'chunk', or 'taxonomy'
+    entity_type: str,  # 'document', 'chunk', 'taxonomy', 'keyword', or 'entity'
     lang_val: Optional[str] = None,
     db_val: Optional[str] = None,
     source_type: Optional[str] = None,
@@ -840,7 +881,7 @@ def fetch_language_time_series(
     Fetch time series data by language with optional filters.
     
     Args:
-        entity_type: Type of entity ('document', 'chunk', or 'taxonomy')
+        entity_type: Type of entity ('document', 'chunk', 'taxonomy', 'keyword', or 'entity')
         lang_val: Language filter value
         db_val: Database filter value
         source_type: Source type filter value
@@ -912,6 +953,50 @@ def fetch_language_time_series(
                 ORDER BY count DESC
                 LIMIT {top_n};
                 """
+            elif entity_type == 'keyword':
+                top_langs_query = f"""
+                WITH keyword_lang_data AS (
+                    SELECT 
+                        ud.language,
+                        unnest(dsc.keywords) as keyword
+                    FROM document_section_chunk dsc
+                    JOIN document_section ds ON dsc.document_section_id = ds.id
+                    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                    WHERE ud.date IS NOT NULL AND ud.language IS NOT NULL
+                        AND dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0
+                    {filter_sql}
+                )
+                SELECT 
+                    language,
+                    COUNT(*) as count
+                FROM keyword_lang_data
+                GROUP BY language
+                ORDER BY count DESC
+                LIMIT {top_n};
+                """
+            elif entity_type == 'entity':
+                top_langs_query = f"""
+                WITH entity_lang_data AS (
+                    SELECT 
+                        ud.language,
+                        jsonb_array_elements(dsc.named_entities) as entity
+                    FROM document_section_chunk dsc
+                    JOIN document_section ds ON dsc.document_section_id = ds.id
+                    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                    WHERE ud.date IS NOT NULL AND ud.language IS NOT NULL
+                        AND dsc.named_entities IS NOT NULL 
+                        AND jsonb_typeof(dsc.named_entities) = 'array'
+                        AND jsonb_array_length(dsc.named_entities) > 0
+                    {filter_sql}
+                )
+                SELECT 
+                    language,
+                    COUNT(*) as count
+                FROM entity_lang_data
+                GROUP BY language
+                ORDER BY count DESC
+                LIMIT {top_n};
+                """
             else:
                 logging.error(f"Invalid entity type: {entity_type}")
                 return pd.DataFrame(columns=['date', 'language', 'count'])
@@ -966,6 +1051,52 @@ def fetch_language_time_series(
                 GROUP BY {date_trunc}, ud.language
                 ORDER BY date, ud.language;
                 """
+            elif entity_type == 'keyword':
+                time_query = f"""
+                WITH keyword_time_data AS (
+                    SELECT 
+                        ud.date,
+                        ud.language,
+                        unnest(dsc.keywords) as keyword
+                    FROM document_section_chunk dsc
+                    JOIN document_section ds ON dsc.document_section_id = ds.id
+                    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                    WHERE ud.date IS NOT NULL AND ud.language IN :languages
+                        AND dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0
+                    {filter_sql}
+                )
+                SELECT 
+                    DATE_TRUNC('{granularity}', date) as date,
+                    language,
+                    COUNT(*) as count
+                FROM keyword_time_data
+                GROUP BY DATE_TRUNC('{granularity}', date), language
+                ORDER BY date, language;
+                """
+            elif entity_type == 'entity':
+                time_query = f"""
+                WITH entity_time_data AS (
+                    SELECT 
+                        ud.date,
+                        ud.language,
+                        jsonb_array_elements(dsc.named_entities) as entity
+                    FROM document_section_chunk dsc
+                    JOIN document_section ds ON dsc.document_section_id = ds.id
+                    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                    WHERE ud.date IS NOT NULL AND ud.language IN :languages
+                        AND dsc.named_entities IS NOT NULL 
+                        AND jsonb_typeof(dsc.named_entities) = 'array'
+                        AND jsonb_array_length(dsc.named_entities) > 0
+                    {filter_sql}
+                )
+                SELECT 
+                    DATE_TRUNC('{granularity}', date) as date,
+                    language,
+                    COUNT(*) as count
+                FROM entity_time_data
+                GROUP BY DATE_TRUNC('{granularity}', date), language
+                ORDER BY date, language;
+                """
             
             # Add top languages to params
             params['languages'] = tuple(top_languages)
@@ -986,9 +1117,9 @@ def fetch_language_time_series(
         return pd.DataFrame(columns=['date', 'language', 'count'])
 
 
-@cached(timeout=600)
+@cached(timeout=3600)
 def fetch_database_time_series(
-    entity_type: str,  # 'document', 'chunk', or 'taxonomy'
+    entity_type: str,  # 'document', 'chunk', 'taxonomy', 'keyword', or 'entity'
     lang_val: Optional[str] = None,
     db_val: Optional[str] = None,
     source_type: Optional[str] = None,
@@ -1000,7 +1131,7 @@ def fetch_database_time_series(
     Fetch time series data by database with optional filters.
     
     Args:
-        entity_type: Type of entity ('document', 'chunk', or 'taxonomy')
+        entity_type: Type of entity ('document', 'chunk', 'taxonomy', 'keyword', or 'entity')
         lang_val: Language filter value
         db_val: Database filter value
         source_type: Source type filter value
@@ -1072,6 +1203,50 @@ def fetch_database_time_series(
                 ORDER BY count DESC
                 LIMIT {top_n};
                 """
+            elif entity_type == 'keyword':
+                top_dbs_query = f"""
+                WITH keyword_db_data AS (
+                    SELECT 
+                        ud.database,
+                        unnest(dsc.keywords) as keyword
+                    FROM document_section_chunk dsc
+                    JOIN document_section ds ON dsc.document_section_id = ds.id
+                    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                    WHERE ud.date IS NOT NULL AND ud.database IS NOT NULL
+                        AND dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0
+                    {filter_sql}
+                )
+                SELECT 
+                    database,
+                    COUNT(*) as count
+                FROM keyword_db_data
+                GROUP BY database
+                ORDER BY count DESC
+                LIMIT {top_n};
+                """
+            elif entity_type == 'entity':
+                top_dbs_query = f"""
+                WITH entity_db_data AS (
+                    SELECT 
+                        ud.database,
+                        jsonb_array_elements(dsc.named_entities) as entity
+                    FROM document_section_chunk dsc
+                    JOIN document_section ds ON dsc.document_section_id = ds.id
+                    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                    WHERE ud.date IS NOT NULL AND ud.database IS NOT NULL
+                        AND dsc.named_entities IS NOT NULL 
+                        AND jsonb_typeof(dsc.named_entities) = 'array'
+                        AND jsonb_array_length(dsc.named_entities) > 0
+                    {filter_sql}
+                )
+                SELECT 
+                    database,
+                    COUNT(*) as count
+                FROM entity_db_data
+                GROUP BY database
+                ORDER BY count DESC
+                LIMIT {top_n};
+                """
             else:
                 logging.error(f"Invalid entity type: {entity_type}")
                 return pd.DataFrame(columns=['date', 'database', 'count'])
@@ -1126,6 +1301,52 @@ def fetch_database_time_series(
                 GROUP BY {date_trunc}, ud.database
                 ORDER BY date, ud.database;
                 """
+            elif entity_type == 'keyword':
+                time_query = f"""
+                WITH keyword_time_data AS (
+                    SELECT 
+                        ud.date,
+                        ud.database,
+                        unnest(dsc.keywords) as keyword
+                    FROM document_section_chunk dsc
+                    JOIN document_section ds ON dsc.document_section_id = ds.id
+                    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                    WHERE ud.date IS NOT NULL AND ud.database IN :databases
+                        AND dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0
+                    {filter_sql}
+                )
+                SELECT 
+                    DATE_TRUNC('{granularity}', date) as date,
+                    database,
+                    COUNT(*) as count
+                FROM keyword_time_data
+                GROUP BY DATE_TRUNC('{granularity}', date), database
+                ORDER BY date, database;
+                """
+            elif entity_type == 'entity':
+                time_query = f"""
+                WITH entity_time_data AS (
+                    SELECT 
+                        ud.date,
+                        ud.database,
+                        jsonb_array_elements(dsc.named_entities) as entity
+                    FROM document_section_chunk dsc
+                    JOIN document_section ds ON dsc.document_section_id = ds.id
+                    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                    WHERE ud.date IS NOT NULL AND ud.database IN :databases
+                        AND dsc.named_entities IS NOT NULL 
+                        AND jsonb_typeof(dsc.named_entities) = 'array'
+                        AND jsonb_array_length(dsc.named_entities) > 0
+                    {filter_sql}
+                )
+                SELECT 
+                    DATE_TRUNC('{granularity}', date) as date,
+                    database,
+                    COUNT(*) as count
+                FROM entity_time_data
+                GROUP BY DATE_TRUNC('{granularity}', date), database
+                ORDER BY date, database;
+                """
             
             # Add top databases to params
             params['databases'] = tuple(top_databases)
@@ -1165,6 +1386,788 @@ def _build_source_type_condition(source_type: Optional[str]) -> str:
         return f"AND {SOURCE_TYPE_FILTERS[source_type]}"
     
     return ""
+
+
+@cached(timeout=3600)
+def fetch_keywords_data(
+    lang_val: Optional[str] = None,
+    db_val: Optional[str] = None,
+    source_type: Optional[str] = None,
+    date_range: Optional[Tuple[str, str]] = None
+):
+    """
+    Fetch keywords statistical data with optional filters.
+    
+    Args:
+        lang_val: Language filter value
+        db_val: Database filter value
+        source_type: Source type filter value
+        date_range: Date range filter
+        
+    Returns:
+        dict: Keywords data including statistics and distributions
+    """
+    start_time = time.time()
+    logging.info(f"Fetching keywords data with filters: lang={lang_val}, db={db_val}, source_type={source_type}")
+    
+    if lang_val == 'ALL':
+        lang_val = None
+    if db_val == 'ALL':
+        db_val = None
+    
+    try:
+        engine = get_engine()
+        with engine.connect() as conn:
+            # Base query parts for filtering
+            base_filters = _build_base_filters(lang_val, db_val, source_type, date_range)
+            params = base_filters['params']
+            filter_sql = base_filters['filter_sql']
+            
+            # Get total unique keywords and chunk statistics
+            stats_query = f"""
+            WITH keyword_data AS (
+                SELECT 
+                    dsc.id as chunk_id,
+                    unnest(dsc.keywords) as keyword
+                FROM document_section_chunk dsc
+                JOIN document_section ds ON dsc.document_section_id = ds.id
+                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                WHERE dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0
+                {filter_sql}
+            )
+            SELECT 
+                COUNT(DISTINCT keyword) as unique_keywords,
+                COUNT(*) as total_keyword_occurrences,
+                COUNT(DISTINCT chunk_id) as chunks_with_keywords
+            FROM keyword_data;
+            """
+            
+            stats_df = pd.read_sql(text(stats_query), conn, params=params)
+            
+            # Get top keywords by frequency
+            top_keywords_query = f"""
+            WITH keyword_data AS (
+                SELECT 
+                    unnest(dsc.keywords) as keyword
+                FROM document_section_chunk dsc
+                JOIN document_section ds ON dsc.document_section_id = ds.id
+                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                WHERE dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0
+                {filter_sql}
+            )
+            SELECT 
+                keyword,
+                COUNT(*) as count
+            FROM keyword_data
+            GROUP BY keyword
+            ORDER BY count DESC
+            LIMIT 20;
+            """
+            
+            top_keywords_df = pd.read_sql(text(top_keywords_query), conn, params=params)
+            
+            # Get keywords per chunk distribution
+            keywords_per_chunk_query = f"""
+            WITH chunk_keyword_counts AS (
+                SELECT 
+                    dsc.id as chunk_id,
+                    array_length(dsc.keywords, 1) as keyword_count
+                FROM document_section_chunk dsc
+                JOIN document_section ds ON dsc.document_section_id = ds.id
+                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                WHERE 1=1
+                {filter_sql}
+            )
+            SELECT 
+                CASE 
+                    WHEN keyword_count IS NULL OR keyword_count = 0 THEN '0'
+                    WHEN keyword_count BETWEEN 1 AND 5 THEN '1-5'
+                    WHEN keyword_count BETWEEN 6 AND 10 THEN '6-10'
+                    WHEN keyword_count BETWEEN 11 AND 15 THEN '11-15'
+                    WHEN keyword_count BETWEEN 16 AND 20 THEN '16-20'
+                    ELSE '20+'
+                END as keyword_range,
+                COUNT(*) as count,
+                CASE 
+                    WHEN keyword_count IS NULL OR keyword_count = 0 THEN 0
+                    WHEN keyword_count BETWEEN 1 AND 5 THEN 1
+                    WHEN keyword_count BETWEEN 6 AND 10 THEN 2
+                    WHEN keyword_count BETWEEN 11 AND 15 THEN 3
+                    WHEN keyword_count BETWEEN 16 AND 20 THEN 4
+                    ELSE 5
+                END as sort_order
+            FROM chunk_keyword_counts
+            GROUP BY keyword_range, sort_order
+            ORDER BY sort_order;
+            """
+            
+            dist_df = pd.read_sql(text(keywords_per_chunk_query), conn, params=params)
+            
+            # Get language distribution of keywords
+            lang_dist_query = f"""
+            WITH keyword_lang_data AS (
+                SELECT 
+                    ud.language,
+                    unnest(dsc.keywords) as keyword
+                FROM document_section_chunk dsc
+                JOIN document_section ds ON dsc.document_section_id = ds.id
+                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                WHERE dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0
+                {filter_sql}
+            )
+            SELECT 
+                language,
+                COUNT(DISTINCT keyword) as unique_keywords,
+                COUNT(*) as total_occurrences
+            FROM keyword_lang_data
+            GROUP BY language
+            ORDER BY total_occurrences DESC;
+            """
+            
+            lang_df = pd.read_sql(text(lang_dist_query), conn, params=params)
+            
+            # Get database distribution of keywords
+            db_dist_query = f"""
+            WITH keyword_db_data AS (
+                SELECT 
+                    ud.database,
+                    unnest(dsc.keywords) as keyword
+                FROM document_section_chunk dsc
+                JOIN document_section ds ON dsc.document_section_id = ds.id
+                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                WHERE dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0
+                {filter_sql}
+            )
+            SELECT 
+                database,
+                COUNT(DISTINCT keyword) as unique_keywords,
+                COUNT(*) as total_occurrences
+            FROM keyword_db_data
+            GROUP BY database
+            ORDER BY total_occurrences DESC
+            LIMIT 10;
+            """
+            
+            db_df = pd.read_sql(text(db_dist_query), conn, params=params)
+            
+            # Get total chunks for coverage calculation
+            total_chunks_query = f"""
+            SELECT COUNT(DISTINCT dsc.id) as total_chunks
+            FROM document_section_chunk dsc
+            JOIN document_section ds ON dsc.document_section_id = ds.id
+            JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+            WHERE 1=1
+            {filter_sql}
+            """
+            
+            total_chunks_df = pd.read_sql(text(total_chunks_query), conn, params=params)
+            total_chunks = int(total_chunks_df['total_chunks'].iloc[0])
+            
+            # Extract statistics
+            unique_keywords = int(stats_df['unique_keywords'].iloc[0]) if not stats_df.empty else 0
+            total_keyword_occurrences = int(stats_df['total_keyword_occurrences'].iloc[0]) if not stats_df.empty else 0
+            chunks_with_keywords = int(stats_df['chunks_with_keywords'].iloc[0]) if not stats_df.empty else 0
+            
+            # Calculate coverage and averages
+            keyword_coverage = round((chunks_with_keywords / total_chunks * 100), 1) if total_chunks > 0 else 0
+            avg_keywords_per_chunk = round(total_keyword_occurrences / chunks_with_keywords, 2) if chunks_with_keywords > 0 else 0
+            
+            # Process top keywords
+            top_keywords_labels = []
+            top_keywords_values = []
+            if not top_keywords_df.empty:
+                top_keywords_labels = top_keywords_df['keyword'].tolist()
+                top_keywords_values = top_keywords_df['count'].tolist()
+            
+            # Process distribution data
+            dist_labels = []
+            dist_values = []
+            dist_percentages = []
+            if not dist_df.empty:
+                dist_labels = dist_df['keyword_range'].tolist()
+                dist_values = dist_df['count'].tolist()
+                dist_percentages = [round((v / total_chunks * 100), 1) if total_chunks > 0 else 0 for v in dist_values]
+            
+            # Process language distribution
+            lang_labels = []
+            lang_unique = []
+            lang_total = []
+            if not lang_df.empty:
+                lang_labels = lang_df['language'].tolist()
+                lang_unique = lang_df['unique_keywords'].tolist()
+                lang_total = lang_df['total_occurrences'].tolist()
+            
+            # Process database distribution
+            db_labels = []
+            db_unique = []
+            db_total = []
+            if not db_df.empty:
+                db_labels = db_df['database'].tolist()
+                db_unique = db_df['unique_keywords'].tolist()
+                db_total = db_df['total_occurrences'].tolist()
+            
+            keywords_data = {
+                "total_unique_keywords": unique_keywords,
+                "total_keyword_occurrences": total_keyword_occurrences,
+                "chunks_with_keywords": chunks_with_keywords,
+                "keyword_coverage": keyword_coverage,
+                "avg_keywords_per_chunk": avg_keywords_per_chunk,
+                "total_chunks": total_chunks,
+                "top_keywords": {
+                    "labels": top_keywords_labels,
+                    "values": top_keywords_values
+                },
+                "keywords_per_chunk_distribution": {
+                    "labels": dist_labels,
+                    "values": dist_values,
+                    "percentages": dist_percentages
+                },
+                "by_language": {
+                    "labels": lang_labels,
+                    "unique_keywords": lang_unique,
+                    "total_occurrences": lang_total
+                },
+                "by_database": {
+                    "labels": db_labels,
+                    "unique_keywords": db_unique,
+                    "total_occurrences": db_total
+                }
+            }
+            
+            end_time = time.time()
+            logging.info(f"Keywords data fetched in {end_time - start_time:.2f} seconds")
+            return keywords_data
+            
+    except Exception as e:
+        logging.error(f"Error fetching keywords data: {e}")
+        # Return empty data structure in case of error
+        return {
+            "total_unique_keywords": 0,
+            "total_keyword_occurrences": 0,
+            "chunks_with_keywords": 0,
+            "keyword_coverage": 0,
+            "avg_keywords_per_chunk": 0,
+            "total_chunks": 0,
+            "top_keywords": {
+                "labels": [],
+                "values": []
+            },
+            "keywords_per_chunk_distribution": {
+                "labels": [],
+                "values": [],
+                "percentages": []
+            },
+            "by_language": {
+                "labels": [],
+                "unique_keywords": [],
+                "total_occurrences": []
+            },
+            "by_database": {
+                "labels": [],
+                "unique_keywords": [],
+                "total_occurrences": []
+            }
+        }
+
+
+@cached(timeout=3600)
+def fetch_named_entities_data(
+    lang_val: Optional[str] = None,
+    db_val: Optional[str] = None,
+    source_type: Optional[str] = None,
+    date_range: Optional[Tuple[str, str]] = None
+):
+    """
+    Fetch named entities statistical data with optional filters.
+    
+    Args:
+        lang_val: Language filter value
+        db_val: Database filter value
+        source_type: Source type filter value
+        date_range: Date range filter
+        
+    Returns:
+        dict: Named entities data including statistics and distributions
+    """
+    start_time = time.time()
+    logging.info(f"Fetching named entities data with filters: lang={lang_val}, db={db_val}, source_type={source_type}")
+    
+    if lang_val == 'ALL':
+        lang_val = None
+    if db_val == 'ALL':
+        db_val = None
+    
+    try:
+        engine = get_engine()
+        with engine.connect() as conn:
+            # Base query parts for filtering
+            base_filters = _build_base_filters(lang_val, db_val, source_type, date_range)
+            params = base_filters['params']
+            filter_sql = base_filters['filter_sql']
+            
+            # Get total unique entities and chunk statistics
+            # Named entities are stored as JSONB array directly: [{"text": "...", "label": "..."}]
+            stats_query = f"""
+            WITH entity_data AS (
+                SELECT 
+                    dsc.id as chunk_id,
+                    jsonb_array_elements(dsc.named_entities) as entity
+                FROM document_section_chunk dsc
+                JOIN document_section ds ON dsc.document_section_id = ds.id
+                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                WHERE dsc.named_entities IS NOT NULL 
+                    AND jsonb_typeof(dsc.named_entities) = 'array'
+                    AND jsonb_array_length(dsc.named_entities) > 0
+                {filter_sql}
+            )
+            SELECT 
+                COUNT(DISTINCT entity->>'text') as unique_entities,
+                COUNT(*) as total_entity_occurrences,
+                COUNT(DISTINCT chunk_id) as chunks_with_entities,
+                COUNT(DISTINCT entity->>'label') as entity_types
+            FROM entity_data;
+            """
+            
+            stats_df = pd.read_sql(text(stats_query), conn, params=params)
+            
+            # Get top entities by frequency
+            top_entities_query = f"""
+            WITH entity_data AS (
+                SELECT 
+                    jsonb_array_elements(dsc.named_entities) as entity
+                FROM document_section_chunk dsc
+                JOIN document_section ds ON dsc.document_section_id = ds.id
+                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                WHERE dsc.named_entities IS NOT NULL 
+                    AND jsonb_typeof(dsc.named_entities) = 'array'
+                    AND jsonb_array_length(dsc.named_entities) > 0
+                {filter_sql}
+            )
+            SELECT 
+                entity->>'text' as entity_text,
+                entity->>'label' as entity_type,
+                COUNT(*) as count
+            FROM entity_data
+            GROUP BY entity_text, entity_type
+            ORDER BY count DESC
+            LIMIT 20;
+            """
+            
+            top_entities_df = pd.read_sql(text(top_entities_query), conn, params=params)
+            
+            # Get entity types distribution
+            entity_types_query = f"""
+            WITH entity_data AS (
+                SELECT 
+                    jsonb_array_elements(dsc.named_entities) as entity
+                FROM document_section_chunk dsc
+                JOIN document_section ds ON dsc.document_section_id = ds.id
+                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                WHERE dsc.named_entities IS NOT NULL 
+                    AND jsonb_typeof(dsc.named_entities) = 'array'
+                    AND jsonb_array_length(dsc.named_entities) > 0
+                {filter_sql}
+            )
+            SELECT 
+                entity->>'label' as entity_type,
+                COUNT(*) as count,
+                COUNT(DISTINCT entity->>'text') as unique_entities
+            FROM entity_data
+            GROUP BY entity_type
+            ORDER BY count DESC;
+            """
+            
+            entity_types_df = pd.read_sql(text(entity_types_query), conn, params=params)
+            
+            # Get entities per chunk distribution
+            entities_per_chunk_query = f"""
+            WITH chunk_entity_counts AS (
+                SELECT 
+                    dsc.id as chunk_id,
+                    CASE 
+                        WHEN dsc.named_entities IS NULL 
+                            OR jsonb_typeof(dsc.named_entities) != 'array' THEN 0
+                        ELSE jsonb_array_length(dsc.named_entities)
+                    END as entity_count
+                FROM document_section_chunk dsc
+                JOIN document_section ds ON dsc.document_section_id = ds.id
+                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                WHERE 1=1
+                {filter_sql}
+            )
+            SELECT 
+                CASE 
+                    WHEN entity_count = 0 THEN '0'
+                    WHEN entity_count BETWEEN 1 AND 5 THEN '1-5'
+                    WHEN entity_count BETWEEN 6 AND 10 THEN '6-10'
+                    WHEN entity_count BETWEEN 11 AND 20 THEN '11-20'
+                    WHEN entity_count BETWEEN 21 AND 30 THEN '21-30'
+                    ELSE '30+'
+                END as entity_range,
+                COUNT(*) as count,
+                CASE 
+                    WHEN entity_count = 0 THEN 0
+                    WHEN entity_count BETWEEN 1 AND 5 THEN 1
+                    WHEN entity_count BETWEEN 6 AND 10 THEN 2
+                    WHEN entity_count BETWEEN 11 AND 20 THEN 3
+                    WHEN entity_count BETWEEN 21 AND 30 THEN 4
+                    ELSE 5
+                END as sort_order
+            FROM chunk_entity_counts
+            GROUP BY entity_range, sort_order
+            ORDER BY sort_order;
+            """
+            
+            dist_df = pd.read_sql(text(entities_per_chunk_query), conn, params=params)
+            
+            # Get language distribution of entities
+            lang_dist_query = f"""
+            WITH entity_lang_data AS (
+                SELECT 
+                    ud.language,
+                    jsonb_array_elements(dsc.named_entities) as entity
+                FROM document_section_chunk dsc
+                JOIN document_section ds ON dsc.document_section_id = ds.id
+                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                WHERE dsc.named_entities IS NOT NULL 
+                    AND jsonb_typeof(dsc.named_entities) = 'array'
+                    AND jsonb_array_length(dsc.named_entities) > 0
+                {filter_sql}
+            )
+            SELECT 
+                language,
+                COUNT(DISTINCT entity->>'text') as unique_entities,
+                COUNT(*) as total_occurrences
+            FROM entity_lang_data
+            GROUP BY language
+            ORDER BY total_occurrences DESC;
+            """
+            
+            lang_df = pd.read_sql(text(lang_dist_query), conn, params=params)
+            
+            # Get database distribution of entities
+            db_dist_query = f"""
+            WITH entity_db_data AS (
+                SELECT 
+                    ud.database,
+                    jsonb_array_elements(dsc.named_entities) as entity
+                FROM document_section_chunk dsc
+                JOIN document_section ds ON dsc.document_section_id = ds.id
+                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                WHERE dsc.named_entities IS NOT NULL 
+                    AND jsonb_typeof(dsc.named_entities) = 'array'
+                    AND jsonb_array_length(dsc.named_entities) > 0
+                {filter_sql}
+            )
+            SELECT 
+                database,
+                COUNT(DISTINCT entity->>'text') as unique_entities,
+                COUNT(*) as total_occurrences
+            FROM entity_db_data
+            GROUP BY database
+            ORDER BY total_occurrences DESC
+            LIMIT 10;
+            """
+            
+            db_df = pd.read_sql(text(db_dist_query), conn, params=params)
+            
+            # Get total chunks for coverage calculation
+            total_chunks_query = f"""
+            SELECT COUNT(DISTINCT dsc.id) as total_chunks
+            FROM document_section_chunk dsc
+            JOIN document_section ds ON dsc.document_section_id = ds.id
+            JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+            WHERE 1=1
+            {filter_sql}
+            """
+            
+            total_chunks_df = pd.read_sql(text(total_chunks_query), conn, params=params)
+            total_chunks = int(total_chunks_df['total_chunks'].iloc[0])
+            
+            # Extract statistics
+            unique_entities = int(stats_df['unique_entities'].iloc[0]) if not stats_df.empty else 0
+            total_entity_occurrences = int(stats_df['total_entity_occurrences'].iloc[0]) if not stats_df.empty else 0
+            chunks_with_entities = int(stats_df['chunks_with_entities'].iloc[0]) if not stats_df.empty else 0
+            entity_types_count = int(stats_df['entity_types'].iloc[0]) if not stats_df.empty else 0
+            
+            # Calculate coverage and averages
+            entity_coverage = round((chunks_with_entities / total_chunks * 100), 1) if total_chunks > 0 else 0
+            avg_entities_per_chunk = round(total_entity_occurrences / chunks_with_entities, 2) if chunks_with_entities > 0 else 0
+            
+            # Process top entities
+            top_entities_labels = []
+            top_entities_types = []
+            top_entities_values = []
+            if not top_entities_df.empty:
+                top_entities_labels = top_entities_df['entity_text'].tolist()
+                top_entities_types = top_entities_df['entity_type'].tolist()
+                top_entities_values = top_entities_df['count'].tolist()
+            
+            # Process entity types
+            entity_type_labels = []
+            entity_type_counts = []
+            entity_type_unique = []
+            if not entity_types_df.empty:
+                entity_type_labels = entity_types_df['entity_type'].tolist()
+                entity_type_counts = entity_types_df['count'].tolist()
+                entity_type_unique = entity_types_df['unique_entities'].tolist()
+            
+            # Process distribution data
+            dist_labels = []
+            dist_values = []
+            dist_percentages = []
+            if not dist_df.empty:
+                dist_labels = dist_df['entity_range'].tolist()
+                dist_values = dist_df['count'].tolist()
+                dist_percentages = [round((v / total_chunks * 100), 1) if total_chunks > 0 else 0 for v in dist_values]
+            
+            # Process language distribution
+            lang_labels = []
+            lang_unique = []
+            lang_total = []
+            if not lang_df.empty:
+                lang_labels = lang_df['language'].tolist()
+                lang_unique = lang_df['unique_entities'].tolist()
+                lang_total = lang_df['total_occurrences'].tolist()
+            
+            # Process database distribution
+            db_labels = []
+            db_unique = []
+            db_total = []
+            if not db_df.empty:
+                db_labels = db_df['database'].tolist()
+                db_unique = db_df['unique_entities'].tolist()
+                db_total = db_df['total_occurrences'].tolist()
+            
+            named_entities_data = {
+                "total_unique_entities": unique_entities,
+                "total_entity_occurrences": total_entity_occurrences,
+                "chunks_with_entities": chunks_with_entities,
+                "entity_coverage": entity_coverage,
+                "avg_entities_per_chunk": avg_entities_per_chunk,
+                "total_chunks": total_chunks,
+                "entity_types_count": entity_types_count,
+                "top_entities": {
+                    "labels": top_entities_labels,
+                    "types": top_entities_types,
+                    "values": top_entities_values
+                },
+                "entity_types": {
+                    "labels": entity_type_labels,
+                    "counts": entity_type_counts,
+                    "unique_entities": entity_type_unique
+                },
+                "entities_per_chunk_distribution": {
+                    "labels": dist_labels,
+                    "values": dist_values,
+                    "percentages": dist_percentages
+                },
+                "by_language": {
+                    "labels": lang_labels,
+                    "unique_entities": lang_unique,
+                    "total_occurrences": lang_total
+                },
+                "by_database": {
+                    "labels": db_labels,
+                    "unique_entities": db_unique,
+                    "total_occurrences": db_total
+                }
+            }
+            
+            end_time = time.time()
+            logging.info(f"Named entities data fetched in {end_time - start_time:.2f} seconds")
+            return named_entities_data
+            
+    except Exception as e:
+        logging.error(f"Error fetching named entities data: {e}")
+        # Return empty data structure in case of error
+        return {
+            "total_unique_entities": 0,
+            "total_entity_occurrences": 0,
+            "chunks_with_entities": 0,
+            "entity_coverage": 0,
+            "avg_entities_per_chunk": 0,
+            "total_chunks": 0,
+            "entity_types_count": 0,
+            "top_entities": {
+                "labels": [],
+                "types": [],
+                "values": []
+            },
+            "entity_types": {
+                "labels": [],
+                "counts": [],
+                "unique_entities": []
+            },
+            "entities_per_chunk_distribution": {
+                "labels": [],
+                "values": [],
+                "percentages": []
+            },
+            "by_language": {
+                "labels": [],
+                "unique_entities": [],
+                "total_occurrences": []
+            },
+            "by_database": {
+                "labels": [],
+                "unique_entities": [],
+                "total_occurrences": []
+            }
+        }
+
+
+@cached(timeout=3600)
+def fetch_database_breakdown(
+    entity_type: str,  # 'document', 'chunk', 'taxonomy', 'keyword', or 'entity'
+    lang_val: Optional[str] = None,
+    db_val: Optional[str] = None,
+    source_type: Optional[str] = None,
+    date_range: Optional[Tuple[str, str]] = None,
+    top_n: int = 10  # Number of top databases to show
+):
+    """
+    Fetch detailed breakdown by database for a specific entity type.
+    
+    Args:
+        entity_type: Type of entity to analyze
+        lang_val: Language filter value
+        db_val: Database filter value
+        source_type: Source type filter value
+        date_range: Date range filter
+        top_n: Number of top databases to include
+        
+    Returns:
+        dict: Database breakdown data
+    """
+    start_time = time.time()
+    logging.info(f"Fetching {entity_type} database breakdown")
+    
+    if lang_val == 'ALL':
+        lang_val = None
+    if db_val == 'ALL':
+        db_val = None
+    
+    try:
+        engine = get_engine()
+        with engine.connect() as conn:
+            # Base query parts for filtering
+            base_filters = _build_base_filters(lang_val, db_val, source_type, date_range)
+            params = base_filters['params']
+            filter_sql = base_filters['filter_sql']
+            
+            # Build query based on entity type
+            if entity_type == 'document':
+                query = f"""
+                SELECT 
+                    ud.database,
+                    COUNT(DISTINCT ud.id) as total_count,
+                    COUNT(DISTINCT CASE WHEN t.id IS NOT NULL THEN ud.id END) as relevant_count
+                FROM uploaded_document ud
+                LEFT JOIN document_section ds ON ud.id = ds.uploaded_document_id
+                LEFT JOIN document_section_chunk dsc ON ds.id = dsc.document_section_id
+                LEFT JOIN taxonomy t ON dsc.id = t.chunk_id
+                WHERE 1=1
+                {filter_sql}
+                GROUP BY ud.database
+                ORDER BY total_count DESC
+                LIMIT {top_n};
+                """
+            elif entity_type == 'chunk':
+                query = f"""
+                SELECT 
+                    ud.database,
+                    COUNT(DISTINCT dsc.id) as total_count,
+                    COUNT(DISTINCT CASE WHEN t.id IS NOT NULL THEN dsc.id END) as relevant_count
+                FROM document_section_chunk dsc
+                JOIN document_section ds ON dsc.document_section_id = ds.id
+                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                LEFT JOIN taxonomy t ON dsc.id = t.chunk_id
+                WHERE 1=1
+                {filter_sql}
+                GROUP BY ud.database
+                ORDER BY total_count DESC
+                LIMIT {top_n};
+                """
+            elif entity_type == 'keyword':
+                query = f"""
+                WITH keyword_db_data AS (
+                    SELECT 
+                        ud.database,
+                        dsc.id as chunk_id,
+                        CASE WHEN dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0 THEN 1 ELSE 0 END as has_keywords
+                    FROM document_section_chunk dsc
+                    JOIN document_section ds ON dsc.document_section_id = ds.id
+                    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                    WHERE 1=1
+                    {filter_sql}
+                )
+                SELECT 
+                    database,
+                    COUNT(DISTINCT chunk_id) as total_count,
+                    COUNT(DISTINCT CASE WHEN has_keywords = 1 THEN chunk_id END) as relevant_count
+                FROM keyword_db_data
+                GROUP BY database
+                ORDER BY total_count DESC
+                LIMIT {top_n};
+                """
+            elif entity_type == 'entity':
+                query = f"""
+                WITH entity_db_data AS (
+                    SELECT 
+                        ud.database,
+                        dsc.id as chunk_id,
+                        CASE WHEN dsc.named_entities IS NOT NULL 
+                             AND jsonb_typeof(dsc.named_entities) = 'array' 
+                             AND jsonb_array_length(dsc.named_entities) > 0 THEN 1 ELSE 0 END as has_entities
+                    FROM document_section_chunk dsc
+                    JOIN document_section ds ON dsc.document_section_id = ds.id
+                    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                    WHERE 1=1
+                    {filter_sql}
+                )
+                SELECT 
+                    database,
+                    COUNT(DISTINCT chunk_id) as total_count,
+                    COUNT(DISTINCT CASE WHEN has_entities = 1 THEN chunk_id END) as relevant_count
+                FROM entity_db_data
+                GROUP BY database
+                ORDER BY total_count DESC
+                LIMIT {top_n};
+                """
+            else:
+                logging.error(f"Invalid entity type: {entity_type}")
+                return {}
+            
+            # Execute query
+            df = pd.read_sql(text(query), conn, params=params)
+            
+            if df.empty:
+                return {}
+            
+            # Process results
+            breakdown = {}
+            for _, row in df.iterrows():
+                db_name = row['database']
+                total = int(row['total_count'])
+                relevant = int(row['relevant_count'])
+                irrelevant = total - relevant
+                coverage = round((relevant / total * 100), 1) if total > 0 else 0
+                
+                breakdown[db_name] = {
+                    'total': total,
+                    'relevant': relevant,
+                    'irrelevant': irrelevant,
+                    'coverage': coverage
+                }
+            
+            end_time = time.time()
+            logging.info(f"Database breakdown fetched in {end_time - start_time:.2f} seconds")
+            return breakdown
+            
+    except Exception as e:
+        logging.error(f"Error fetching database breakdown: {e}")
+        return {}
 
 
 def _build_base_filters(

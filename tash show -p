@@ -1,0 +1,1122 @@
+[1mdiff --git a/.env b/.env[m
+[1mindex 47d7982..8ade5da 100755[m
+[1m--- a/.env[m
+[1m+++ b/.env[m
+[36m@@ -1,4 +1,6 @@[m
+ DB_PASSWORD=GoNKJWp64NkMr9UdgCnT[m
+ DB_HOST=138.201.62.161[m
+ DB_PORT=5434[m
+[31m-DB_NAME=russian_ukrainian_war[m
+\ No newline at end of file[m
+[32m+[m[32mDB_NAME=russian_ukrainian_war[m[41m[m
+[32m+[m[32mAPP_USERNAME=reader[m[41m[m
+[32m+[m[32mAPP_PASSWORD=prototype-warfare[m[41m[m
+[1mdiff --git a/__pycache__/app.cpython-310.pyc b/__pycache__/app.cpython-310.pyc[m
+[1mindex 58eff23..a6e687d 100644[m
+Binary files a/__pycache__/app.cpython-310.pyc and b/__pycache__/app.cpython-310.pyc differ
+[1mdiff --git a/app.py b/app.py[m
+[1mindex cadc380..fb0cae3 100755[m
+[1m--- a/app.py[m
+[1m+++ b/app.py[m
+[36m@@ -35,6 +35,7 @@[m [mfrom tabs.burstiness import create_burstiness_tab_layout, register_burstiness_ca[m
+ from components.layout import create_header, create_about_modal[m
+ from utils.cache import clear_cache[m
+ from utils.keyword_mapping import load_mapping_files, get_mapping_status[m
+[32m+[m[32m# from utils.startup_optimization import start_background_loading  # Removed - using on-demand loading[m
+ [m
+ # Define the consistent color for all components - use the exact color from the color picker[m
+ THEME_BLUE = "#13376f"  # Dark blue color from the image[m
+[36m@@ -111,17 +112,22 @@[m [mdef create_dash_app() -> dash.Dash:[m
+     # Comment this out during development[m
+     # auth = dash_auth.BasicAuth(app, VALID_USERNAME_PASSWORD_PAIRS)[m
+     [m
+[31m-    # Load keyword mapping files[m
+[31m-    try:[m
+[31m-        success, message = load_mapping_files()[m
+[31m-        if success:[m
+[31m-            logging.info(f"Keyword mapping files loaded successfully: {message}")[m
+[31m-            mapping_status = get_mapping_status()[m
+[31m-            logging.info(f"Mapping status: {mapping_status}")[m
+[31m-        else:[m
+[31m-            logging.warning(f"Failed to load keyword mapping files: {message}")[m
+[31m-    except Exception as e:[m
+[31m-        logging.error(f"Error loading keyword mapping files: {e}")[m
+[32m+[m[32m    # Load keyword mapping files in background[m
+[32m+[m[32m    def load_mappings_async():[m
+[32m+[m[32m        try:[m
+[32m+[m[32m            success, message = load_mapping_files()[m
+[32m+[m[32m            if success:[m
+[32m+[m[32m                logging.info(f"Keyword mapping files loaded successfully: {message}")[m
+[32m+[m[32m                mapping_status = get_mapping_status()[m
+[32m+[m[32m                logging.info(f"Mapping status: {mapping_status}")[m
+[32m+[m[32m            else:[m
+[32m+[m[32m                logging.warning(f"Failed to load keyword mapping files: {message}")[m
+[32m+[m[32m        except Exception as e:[m
+[32m+[m[32m            logging.error(f"Error loading keyword mapping files: {e}")[m
+[32m+[m[41m    [m
+[32m+[m[32m    # Start loading in a thread[m
+[32m+[m[32m    import threading[m
+[32m+[m[32m    threading.Thread(target=load_mappings_async, daemon=True).start()[m
+     [m
+     # Fetch initial data[m
+     db_options = [][m
+[36m@@ -158,15 +164,10 @@[m [mdef create_dash_app() -> dash.Dash:[m
+     compare_tab = create_compare_tab_layout(db_options, min_date, max_date)[m
+     burstiness_tab = create_burstiness_tab_layout()[m
+     [m
+[31m-    # Try to import the sources tab, but use a placeholder if it fails[m
+[31m-    try:[m
+[31m-        from tabs.sources import create_sources_tab_layout, register_sources_tab_callbacks[m
+[31m-        sources_tab = create_sources_tab_layout(db_options, min_date, max_date)[m
+[31m-        sources_callbacks = register_sources_tab_callbacks[m
+[31m-    except Exception as e:[m
+[31m-        logging.warning(f"Could not import sources tab, using placeholder: {e}")[m
+[31m-        sources_tab = create_simple_sources_tab(db_options, min_date, max_date)[m
+[31m-        sources_callbacks = register_simple_sources_callbacks[m
+[32m+[m[32m    # Always use lazy loading for sources tab[m
+[32m+[m[32m    from tabs.sources_optimized import create_sources_tab_layout, register_sources_tab_callbacks[m
+[32m+[m[32m    sources_tab = create_sources_tab_layout(db_options, min_date, max_date)[m
+[32m+[m[32m    sources_callbacks = register_sources_tab_callbacks[m
+     [m
+     # About modal component[m
+     about_modal = create_about_modal()[m
+[36m@@ -183,6 +184,10 @@[m [mdef create_dash_app() -> dash.Dash:[m
+             <title>{%title%}</title>[m
+             {%favicon%}[m
+             {%css%}[m
+[32m+[m[32m            <!-- Custom CSS -->[m
+[32m+[m[32m            <link rel="stylesheet" href="/static/custom.css">[m
+[32m+[m[32m            <!-- Custom loading script for radar pulse spinner -->[m
+[32m+[m[32m            <script src="/static/loading.js"></script>[m
+             <!-- Preload critical scripts to prevent loading errors -->[m
+             <link rel="preload" href="/_dash-component-suites/dash/dcc/async-slider.js" as="script">[m
+             <link rel="preload" href="/_dash-component-suites/dash/dcc/async-graph.js" as="script">[m
+[36m@@ -234,18 +239,6 @@[m [mdef create_dash_app() -> dash.Dash:[m
+                     width: 100%;[m
+                 }[m
+                 [m
+[31m-                /* Make loading spinner more visible and center it */[m
+[31m-                ._dash-loading {[m
+[31m-                    position: fixed !important;[m
+[31m-                    top: 50% !important;[m
+[31m-                    left: 50% !important;[m
+[31m-                    transform: translate(-50%, -50%) !important;[m
+[31m-                    width: 80px !important;[m
+[31m-                    height: 80px !important;[m
+[31m-                    border: 8px solid #f3f3f3 !important;[m
+[31m-                    border-top: 8px solid ''' + THEME_BLUE + ''' !important;[m
+[31m-                    z-index: 9999 !important;[m
+[31m-                }[m
+                 [m
+                 /* Dashboard container for responsive layout */[m
+                 .dashboard-container {[m
+[36m@@ -301,19 +294,6 @@[m [mdef create_dash_app() -> dash.Dash:[m
+                     padding-top: 20%;[m
+                 }[m
+                 [m
+[31m-                /* Dash component loading fixes */[m
+[31m-                ._dash-loading-callback {[m
+[31m-                    position: fixed !important;[m
+[31m-                    top: 50% !important;[m
+[31m-                    left: 50% !important;[m
+[31m-                    transform: translate(-50%, -50%) !important;[m
+[31m-                }[m
+[31m-                [m
+[31m-                /* Spinner animation */[m
+[31m-                @keyframes spin {[m
+[31m-                    0% { transform: rotate(0deg); }[m
+[31m-                    100% { transform: rotate(360deg); }[m
+[31m-                }[m
+                 [m
+                 /* Filter card styling to make it more compact */[m
+                 .filter-card .card-body {[m
+[36m@@ -424,10 +404,6 @@[m [mdef create_dash_app() -> dash.Dash:[m
+                     border-color: ''' + THEME_BLUE + ''' !important;[m
+                 }[m
+                 [m
+[31m-                /* Consistent spinner styling */[m
+[31m-                .dash-spinner .dash-spinner-inner {[m
+[31m-                    border-top-color: ''' + THEME_BLUE + ''' !important;[m
+[31m-                }[m
+             </style>[m
+         </head>[m
+         <body>[m
+[36m@@ -442,6 +418,8 @@[m [mdef create_dash_app() -> dash.Dash:[m
+                 {%config%}[m
+                 {%scripts%}[m
+                 {%renderer%}[m
+[32m+[m[32m                <!-- Radar Loader Script -->[m
+[32m+[m[32m                <script src="/static/radar-loader.js"></script>[m
+                 <!-- Additional script to handle errors and retry loading -->[m
+                 <script>[m
+                     // Show loading fallback if components fail to load[m
+[36m@@ -493,6 +471,9 @@[m [mdef create_dash_app() -> dash.Dash:[m
+     register_burstiness_callbacks(app)[m
+     sources_callbacks(app)[m
+     [m
+[32m+[m[32m    # Background loading removed - sources data now loads on-demand[m
+[32m+[m[32m    # start_background_loading()[m
+[32m+[m[41m    [m
+     # Register about modal callback - MODIFIED: Now only main header About button triggers this[m
+     @app.callback([m
+         dash.Output("about-modal", "is_open", allow_duplicate=True),[m
+[1mdiff --git a/components/__pycache__/layout.cpython-310.pyc b/components/__pycache__/layout.cpython-310.pyc[m
+[1mindex 8673ffc..df3def1 100644[m
+Binary files a/components/__pycache__/layout.cpython-310.pyc and b/components/__pycache__/layout.cpython-310.pyc differ
+[1mdiff --git a/components/layout.py b/components/layout.py[m
+[1mindex 9667df4..da220dc 100755[m
+[1m--- a/components/layout.py[m
+[1m+++ b/components/layout.py[m
+[36m@@ -202,7 +202,7 @@[m [mdef create_filter_card(id_prefix: str, db_options: List, min_date: datetime = No[m
+             dbc.Row([[m
+                 # Language[m
+                 dbc.Col([[m
+[31m-                    html.Label("Language:"),[m
+[32m+[m[32m                    html.Label("Language:", style={"margin-bottom": "5px", "font-size": "0.9rem"}),[m[41m[m
+                     dcc.Dropdown([m
+                         id=f'{id_prefix}-language-dropdown',[m
+                         options=LANGUAGE_OPTIONS,[m
+[36m@@ -215,7 +215,7 @@[m [mdef create_filter_card(id_prefix: str, db_options: List, min_date: datetime = No[m
+                 [m
+                 # Database[m
+                 dbc.Col([[m
+[31m-                    html.Label("Database:"),[m
+[32m+[m[32m                    html.Label("Database:", style={"margin-bottom": "5px", "font-size": "0.9rem"}),[m[41m[m
+                     dcc.Dropdown([m
+                         id=f'{id_prefix}-database-dropdown',[m
+                         options=db_options,[m
+[36m@@ -228,7 +228,7 @@[m [mdef create_filter_card(id_prefix: str, db_options: List, min_date: datetime = No[m
+                 [m
+                 # Source Type[m
+                 dbc.Col([[m
+[31m-                    html.Label("Source Type:"),[m
+[32m+[m[32m                    html.Label("Source Type:", style={"margin-bottom": "5px", "font-size": "0.9rem"}),[m[41m[m
+                     dcc.Dropdown([m
+                         id=f'{id_prefix}-source-type-dropdown',[m
+                         options=SOURCE_TYPE_OPTIONS,[m
+[36m@@ -241,7 +241,7 @@[m [mdef create_filter_card(id_prefix: str, db_options: List, min_date: datetime = No[m
+                 [m
+                 # Date Range[m
+                 dbc.Col([[m
+[31m-                    html.Label("Date Range:"),[m
+[32m+[m[32m                    html.Label("Date Range:", style={"margin-bottom": "5px", "font-size": "0.9rem"}),[m[41m[m
+                     dcc.DatePickerRange([m
+                         id=f'{id_prefix}-date-range-picker',[m
+                         start_date=min_date,[m
+[36m@@ -258,16 +258,15 @@[m [mdef create_filter_card(id_prefix: str, db_options: List, min_date: datetime = No[m
+                 [m
+                 # Apply button (right-aligned)[m
+                 dbc.Col([[m
+[31m-                    # The br tag creates vertical alignment with other elements[m
+[31m-                    html.Br(),[m
+[32m+[m[32m                    # Empty label to maintain alignment[m[41m[m
+[32m+[m[32m                    html.Label("\u00A0", style={"margin-bottom": "5px", "font-size": "0.9rem"}),  # Non-breaking space[m[41m[m
+                     dbc.Button([m
+                         'Apply Filters', [m
+                         id=f'{id_prefix}-filter-button', [m
+[31m-                        color="primary",[m
+[31m-                        className="mt-1"[m
+[32m+[m[32m                        color="primary"[m[41m[m
+                     ),[m
+                 ], width="auto"),[m
+[31m-            ], className="g-0 align-items-end"),  # g-0 removes gutters, align-items-end aligns at bottom[m
+[32m+[m[32m            ], className="g-2 align-items-end"),  # g-2 for small gutters, align-items-end aligns at bottom[m[41m[m
+             [m
+             html.Div(id=f'{id_prefix}-result-stats', className="mt-2")[m
+         ], className="p-3")[m
+[1mdiff --git a/database/__pycache__/data_fetchers.cpython-310.pyc b/database/__pycache__/data_fetchers.cpython-310.pyc[m
+[1mindex e2d5d57..b481b4e 100644[m
+Binary files a/database/__pycache__/data_fetchers.cpython-310.pyc and b/database/__pycache__/data_fetchers.cpython-310.pyc differ
+[1mdiff --git a/database/__pycache__/data_fetchers_sources.cpython-310.pyc b/database/__pycache__/data_fetchers_sources.cpython-310.pyc[m
+[1mindex b9d8130..11707ee 100644[m
+Binary files a/database/__pycache__/data_fetchers_sources.cpython-310.pyc and b/database/__pycache__/data_fetchers_sources.cpython-310.pyc differ
+[1mdiff --git a/database/data_fetchers.py b/database/data_fetchers.py[m
+[1mindex 611123c..0ee4b14 100755[m
+[1m--- a/database/data_fetchers.py[m
+[1m+++ b/database/data_fetchers.py[m
+[36m@@ -542,9 +542,17 @@[m [mdef fetch_text_chunks([m
+         t.chunk_level_reasoning AS reasoning,[m
+         ud.document_id,[m
+         ud.database,[m
+[32m+[m[32m        ud.source,[m[41m[m
+         ds.heading_title,[m
+         ud.date,[m
+[31m-        ud.author[m
+[32m+[m[32m        ud.author,[m[41m[m
+[32m+[m[32m        ud.language,[m[41m[m
+[32m+[m[32m        dsc.chunk_index,[m[41m[m
+[32m+[m[32m        ds.sequence_number,[m[41m[m
+[32m+[m[32m        dsc.keywords,[m[41m[m
+[32m+[m[32m        dsc.named_entities,[m[41m[m
+[32m+[m[32m        t.taxonomy_reasoning,[m[41m[m
+[32m+[m[32m        ud.is_full_text_present[m[41m[m
+     FROM taxonomy t[m
+     JOIN document_section_chunk dsc ON t.chunk_id = dsc.id[m
+     JOIN document_section ds ON dsc.document_section_id = ds.id[m
+[36m@@ -1077,9 +1085,17 @@[m [mdef fetch_all_text_chunks_for_search([m
+         t.chunk_level_reasoning AS reasoning,[m
+         ud.document_id,[m
+         ud.database,[m
+[32m+[m[32m        ud.source,[m[41m[m
+         ds.heading_title,[m
+         ud.date,[m
+[31m-        ud.author[m
+[32m+[m[32m        ud.author,[m[41m[m
+[32m+[m[32m        ud.language,[m[41m[m
+[32m+[m[32m        dsc.chunk_index,[m[41m[m
+[32m+[m[32m        ds.sequence_number,[m[41m[m
+[32m+[m[32m        dsc.keywords,[m[41m[m
+[32m+[m[32m        dsc.named_entities,[m[41m[m
+[32m+[m[32m        t.taxonomy_reasoning,[m[41m[m
+[32m+[m[32m        ud.is_full_text_present[m[41m[m
+     FROM document_section_chunk dsc[m
+     JOIN taxonomy t ON t.chunk_id = dsc.id[m
+     JOIN document_section ds ON dsc.document_section_id = ds.id[m
+[1mdiff --git a/database/data_fetchers_sources.py b/database/data_fetchers_sources.py[m
+[1mindex 85009bb..c037bfc 100755[m
+[1m--- a/database/data_fetchers_sources.py[m
+[1m+++ b/database/data_fetchers_sources.py[m
+[36m@@ -25,7 +25,7 @@[m [mfrom utils.cache import cached[m
+ from config import SOURCE_TYPE_FILTERS[m
+ [m
+ [m
+[31m-@cached(timeout=600)[m
+[32m+[m[32m@cached(timeout=3600)[m[41m[m
+ def fetch_corpus_stats():[m
+     """[m
+     Fetch overall corpus statistics for the Sources tab.[m
+[36m@@ -181,7 +181,7 @@[m [mdef fetch_corpus_stats():[m
+                 "items_count": 0[m
+             }[m
+ [m
+[31m-@cached(timeout=600)[m
+[32m+[m[32m@cached(timeout=3600)[m[41m[m
+ def fetch_taxonomy_combinations([m
+     lang_val: Optional[str] = None,[m
+     db_val: Optional[str] = None,[m
+[36m@@ -385,7 +385,7 @@[m [mdef fetch_taxonomy_combinations([m
+         }[m
+ [m
+ [m
+[31m-@cached(timeout=600)[m
+[32m+[m[32m@cached(timeout=3600)[m[41m[m
+ def fetch_chunks_data([m
+     lang_val: Optional[str] = None,[m
+     db_val: Optional[str] = None,[m
+[36m@@ -552,7 +552,7 @@[m [mdef fetch_chunks_data([m
+         }[m
+ [m
+ [m
+[31m-@cached(timeout=600)[m
+[32m+[m[32m@cached(timeout=3600)[m[41m[m
+ def fetch_documents_data([m
+     lang_val: Optional[str] = None,[m
+     db_val: Optional[str] = None,[m
+[36m@@ -725,9 +725,9 @@[m [mdef fetch_documents_data([m
+         }[m
+ [m
+ [m
+[31m-@cached(timeout=600)[m
+[32m+[m[32m@cached(timeout=3600)[m[41m[m
+ def fetch_time_series_data([m
+[31m-    entity_type: str,  # 'document', 'chunk', or 'taxonomy'[m
+[32m+[m[32m    entity_type: str,  # 'document', 'chunk', 'taxonomy', 'keyword', or 'entity'[m[41m[m
+     lang_val: Optional[str] = None,[m
+     db_val: Optional[str] = None,[m
+     source_type: Optional[str] = None,[m
+[36m@@ -738,7 +738,7 @@[m [mdef fetch_time_series_data([m
+     Fetch time series data with optional filters.[m
+     [m
+     Args:[m
+[31m-        entity_type: Type of entity ('document', 'chunk', or 'taxonomy')[m
+[32m+[m[32m        entity_type: Type of entity ('document', 'chunk', 'taxonomy', 'keyword', or 'entity')[m[41m[m
+         lang_val: Language filter value[m
+         db_val: Database filter value[m
+         source_type: Source type filter value[m
+[36m@@ -806,6 +806,47 @@[m [mdef fetch_time_series_data([m
+                 GROUP BY {date_trunc}[m
+                 ORDER BY date;[m
+                 """[m
+[32m+[m[32m            elif entity_type == 'keyword':[m[41m[m
+[32m+[m[32m                query = f"""[m[41m[m
+[32m+[m[32m                WITH keyword_data AS ([m[41m[m
+[32m+[m[32m                    SELECT[m[41m [m
+[32m+[m[32m                        ud.date,[m[41m[m
+[32m+[m[32m                        unnest(dsc.keywords) as keyword[m[41m[m
+[32m+[m[32m                    FROM document_section_chunk dsc[m[41m[m
+[32m+[m[32m                    JOIN document_section ds ON dsc.document_section_id = ds.id[m[41m[m
+[32m+[m[32m                    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id[m[41m[m
+[32m+[m[32m                    WHERE ud.date IS NOT NULL AND dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0[m[41m[m
+[32m+[m[32m                    {filter_sql}[m[41m[m
+[32m+[m[32m                )[m[41m[m
+[32m+[m[32m                SELECT[m[41m [m
+[32m+[m[32m                    DATE_TRUNC('{granularity}', date) as date,[m[41m[m
+[32m+[m[32m                    COUNT(*) as count[m[41m[m
+[32m+[m[32m                FROM keyword_data[m[41m[m
+[32m+[m[32m                GROUP BY DATE_TRUNC('{granularity}', date)[m[41m[m
+[32m+[m[32m                ORDER BY date;[m[41m[m
+[32m+[m[32m                """[m[41m[m
+[32m+[m[32m            elif entity_type == 'entity':[m[41m[m
+[32m+[m[32m                query = f"""[m[41m[m
+[32m+[m[32m                WITH entity_data AS ([m[41m[m
+[32m+[m[32m                    SELECT[m[41m [m
+[32m+[m[32m                        ud.date,[m[41m[m
+[32m+[m[32m                        jsonb_array_elements(dsc.named_entities) as entity[m[41m[m
+[32m+[m[32m                    FROM document_section_chunk dsc[m[41m[m
+[32m+[m[32m                    JOIN document_section ds ON dsc.document_section_id = ds.id[m[41m[m
+[32m+[m[32m                    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id[m[41m[m
+[32m+[m[32m                    WHERE ud.date IS NOT NULL[m[41m [m
+[32m+[m[32m                        AND dsc.named_entities IS NOT NULL[m[41m [m
+[32m+[m[32m                        AND jsonb_typeof(dsc.named_entities) = 'array'[m[41m[m
+[32m+[m[32m                        AND jsonb_array_length(dsc.named_entities) > 0[m[41m[m
+[32m+[m[32m                    {filter_sql}[m[41m[m
+[32m+[m[32m                )[m[41m[m
+[32m+[m[32m                SELECT[m[41m [m
+[32m+[m[32m                    DATE_TRUNC('{granularity}', date) as date,[m[41m[m
+[32m+[m[32m                    COUNT(*) as count[m[41m[m
+[32m+[m[32m                FROM entity_data[m[41m[m
+[32m+[m[32m                GROUP BY DATE_TRUNC('{granularity}', date)[m[41m[m
+[32m+[m[32m                ORDER BY date;[m[41m[m
+[32m+[m[32m                """[m[41m[m
+             else:[m
+                 logging.error(f"Invalid entity type: {entity_type}")[m
+                 return pd.DataFrame(columns=['date', 'count'])[m
+[36m@@ -826,9 +867,9 @@[m [mdef fetch_time_series_data([m
+         return pd.DataFrame(columns=['date', 'count'])[m
+ [m
+ [m
+[31m-@cached(timeout=600)[m
+[32m+[m[32m@cached(timeout=3600)[m[41m[m
+ def fetch_language_time_series([m
+[31m-    entity_type: str,  # 'document', 'chunk', or 'taxonomy'[m
+[32m+[m[32m    entity_type: str,  # 'document', 'chunk', 'taxonomy', 'keyword', or 'entity'[m[41m[m
+     lang_val: Optional[str] = None,[m
+     db_val: Optional[str] = None,[m
+     source_type: Optional[str] = None,[m
+[36m@@ -840,7 +881,7 @@[m [mdef fetch_language_time_series([m
+     Fetch time series data by language with optional filters.[m
+     [m
+     Args:[m
+[31m-        entity_type: Type of entity ('document', 'chunk', or 'taxonomy')[m
+[32m+[m[32m        entity_type: Type of entity ('document', 'chunk', 'taxonomy', 'keyword', or 'entity')[m[41m[m
+         lang_val: Language filter value[m
+         db_val: Database filter value[m
+         source_type: Source type filter value[m
+[36m@@ -912,6 +953,50 @@[m [mdef fetch_language_time_series([m
+                 ORDER BY count DESC[m
+                 LIMIT {top_n};[m
+                 """[m
+[32m+[m[32m            elif entity_type == 'keyword':[m[41m[m
+[32m+[m[32m                top_langs_query = f"""[m[41m[m
+[32m+[m[32m                WITH keyword_lang_data AS ([m[41m[m
+[32m+[m[32m                    SELECT[m[41m [m
+[32m+[m[32m                        ud.language,[m[41m[m
+[32m+[m[32m                        unnest(dsc.keywords) as keyword[m[41m[m
+[32m+[m[32m                    FROM document_section_chunk dsc[m[41m[m
+[32m+[m[32m                    JOIN document_section ds ON dsc.document_section_id = ds.id[m[41m[m
+[32m+[m[32m                    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id[m[41m[m
+[32m+[m[32m                    WHERE ud.date IS NOT NULL AND ud.language IS NOT NULL[m[41m[m
+[32m+[m[32m                        AND dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0[m[41m[m
+[32m+[m[32m                    {filter_sql}[m[41m[m
+[32m+[m[32m                )[m[41m[m
+[32m+[m[32m                SELECT[m[41m [m
+[32m+[m[32m                    language,[m[41m[m
+[32m+[m[32m                    COUNT(*) as count[m[41m[m
+[32m+[m[32m                FROM keyword_lang_data[m[41m[m
+[32m+[m[32m                GROUP BY language[m[41m[m
+[32m+[m[32m                ORDER BY count DESC[m[41m[m
+[32m+[m[32m                LIMIT {top_n};[m[41m[m
+[32m+[m[32m                """[m[41m[m
+[32m+[m[32m            elif entity_type == 'entity':[m[41m[m
+[32m+[m[32m                top_langs_query = f"""[m[41m[m
+[32m+[m[32m                WITH entity_lang_data AS ([m[41m[m
+[32m+[m[32m                    SELECT[m[41m [m
+[32m+[m[32m                        ud.language,[m[41m[m
+[32m+[m[32m                        jsonb_array_elements(dsc.named_entities) as entity[m[41m[m
+[32m+[m[32m                    FROM document_section_chunk dsc[m[41m[m
+[32m+[m[32m                    JOIN document_section ds ON dsc.document_section_id = ds.id[m[41m[m
+[32m+[m[32m                    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id[m[41m[m
+[32m+[m[32m                    WHERE ud.date IS NOT NULL AND ud.language IS NOT NULL[m[41m[m
+[32m+[m[32m                        AND dsc.named_entities IS NOT NULL[m[41m [m
+[32m+[m[32m                        AND jsonb_typeof(dsc.named_entities) = 'array'[m[41m[m
+[32m+[m[32m                        AND jsonb_array_length(dsc.named_entities) > 0[m[41m[m
+[32m+[m[32m                    {filter_sql}[m[41m[m
+[32m+[m[32m                )[m[41m[m
+[32m+[m[32m                SELECT[m[41m [m
+[32m+[m[32m                    language,[m[41m[m
+[32m+[m[32m                    COUNT(*) as count[m[41m[m
+[32m+[m[32m                FROM entity_lang_data[m[41m[m
+[32m+[m[32m                GROUP BY language[m[41m[m
+[32m+[m[32m                ORDER BY count DESC[m[41m[m
+[32m+[m[32m                LIMIT {top_n};[m[41m[m
+[32m+[m[32m                """[m[41m[m
+             else:[m
+                 logging.error(f"Invalid entity type: {entity_type}")[m
+                 return pd.DataFrame(columns=['date', 'language', 'count'])[m
+[36m@@ -966,6 +1051,52 @@[m [mdef fetch_language_time_series([m
+                 GROUP BY {date_trunc}, ud.language[m
+                 ORDER BY date, ud.language;[m
+                 """[m
+[32m+[m[32m            elif entity_type == 'keyword':[m[41m[m
+[32m+[m[32m                time_query = f"""[m[41m[m
+[32m+[m[32m                WITH keyword_time_data AS ([m[41m[m
+[32m+[m[32m                    SELECT[m[41m [m
+[32m+[m[32m                        ud.date,[m[41m[m
+[32m+[m[32m                        ud.language,[m[41m[m
+[32m+[m[32m                        unnest(dsc.keywords) as keyword[m[41m[m
+[32m+[m[32m                    FROM document_section_chunk dsc[m[41m[m
+[32m+[m[32m                    JOIN document_section ds ON dsc.document_section_id = ds.id[m[41m[m
+[32m+[m[32m                    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id[m[41m[m
+[32m+[m[32m                    WHERE ud.date IS NOT NULL AND ud.language IN :languages[m[41m[m
+[32m+[m[32m                        AND dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0[m[41m[m
+[32m+[m[32m                    {filter_sql}[m[41m[m
+[32m+[m[32m                )[m[41m[m
+[32m+[m[32m                SELECT[m[41m [m
+[32m+[m[32m                    DATE_TRUNC('{granularity}', date) as date,[m[41m[m
+[32m+[m[32m                    language,[m[41m[m
+[32m+[m[32m                    COUNT(*) as count[m[41m[m
+[32m+[m[32m                FROM keyword_time_data[m[41m[m
+[32m+[m[32m                GROUP BY DATE_TRUNC('{granularity}', date), language[m[41m[m
+[32m+[m[32m                ORDER BY date, language;[m[41m[m
+[32m+[m[32m                """[m[41m[m
+[32m+[m[32m            elif entity_type == 'entity':[m[41m[m
+[32m+[m[32m                time_query = f"""[m[41m[m
+[32m+[m[32m                WITH entity_time_data AS ([m[41m[m
+[32m+[m[32m                    SELECT[m[41m [m
+[32m+[m[32m                        ud.date,[m[41m[m
+[32m+[m[32m                        ud.language,[m[41m[m
+[32m+[m[32m                        jsonb_array_elements(dsc.named_entities) as entity[m[41m[m
+[32m+[m[32m                    FROM document_section_chunk dsc[m[41m[m
+[32m+[m[32m                    JOIN document_section ds ON dsc.document_section_id = ds.id[m[41m[m
+[32m+[m[32m                    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id[m[41m[m
+[32m+[m[32m                    WHERE ud.date IS NOT NULL AND ud.language IN :languages[m[41m[m
+[32m+[m[32m                        AND dsc.named_entities IS NOT NULL[m[41m [m
+[32m+[m[32m                        AND jsonb_typeof(dsc.named_entities) = 'array'[m[41m[m
+[32m+[m[32m                        AND jsonb_array_length(dsc.named_entities) > 0[m[41m[m
+[32m+[m[32m                    {filter_sql}[m[41m[m
+[32m+[m[32m                )[m[41m[m
+[32m+[m[32m                SELECT[m[41m [m
+[32m+[m[32m                    DATE_TRUNC('{granularity}', date) as date,[m[41m[m
+[32m+[m[32m                    language,[m[41m[m
+[32m+[m[32m                    COUNT(*) as count[m[41m[m
+[32m+[m[32m                FROM entity_time_data[m[41m[m
+[32m+[m[32m                GROUP BY DATE_TRUNC('{granularity}', date), language[m[41m[m
+[32m+[m[32m                ORDER BY date, language;[m[41m[m
+[32m+[m[32m                """[m[41m[m
+             [m
+             # Add top languages to params[m
+             params['languages'] = tuple(top_languages)[m
+[36m@@ -986,9 +1117,9 @@[m [mdef fetch_language_time_series([m
+         return pd.DataFrame(columns=['date', 'language', 'count'])[m
+ [m
+ [m
+[31m-@cached(timeout=600)[m
+[32m+[m[32m@cached(timeout=3600)[m[41m[m
+ def fetch_database_time_series([m
+[31m-    entity_type: str,  # 'document', 'chunk', or 'taxonomy'[m
+[32m+[m[32m    entity_type: str,  # 'document', 'chunk', 'taxonomy', 'keyword', or 'entity'[m[41m[m
+     lang_val: Optional[str] = None,[m
+     db_val: Optional[str] = None,[m
+     source_type: Optional[str] = None,[m
+[36m@@ -1000,7 +1131,7 @@[m [mdef fetch_database_time_series([m
+     Fetch time series data by database with optional filters.[m
+     [m
+     Args:[m
+[31m-        entity_type: Type of entity ('document', 'chunk', or 'taxonomy')[m
+[32m+[m[32m        entity_type: Type of entity ('document', 'chunk', 'taxonomy', 'keyword', or 'entity')[m[41m[m
+         lang_val: Language filter value[m
+         db_val: Database filter value[m
+         source_type: Source type filter value[m
+[36m@@ -1072,6 +1203,50 @@[m [mdef fetch_database_time_series([m
+                 ORDER BY count DESC[m
+                 LIMIT {top_n};[m
+                 """[m
+[32m+[m[32m            elif entity_type == 'keyword':[m[41m[m
+[32m+[m[32m                top_dbs_query = f"""[m[41m[m
+[32m+[m[32m                WITH keyword_db_data AS ([m[41m[m
+[32m+[m[32m                    SELECT[m[41m [m
+[32m+[m[32m                        ud.database,[m[41m[m
+[32m+[m[32m                        unnest(dsc.keywords) as keyword[m[41m[m
+[32m+[m[32m                    FROM document_section_chunk dsc[m[41m[m
+[32m+[m[32m                    JOIN document_section ds ON dsc.document_section_id = ds.id[m[41m[m
+[32m+[m[32m                    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id[m[41m[m
+[32m+[m[32m                    WHERE ud.date IS NOT NULL AND ud.database IS NOT NULL[m[41m[m
+[32m+[m[32m                        AND dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0[m[41m[m
+[32m+[m[32m                    {filter_sql}[m[41m[m
+[32m+[m[32m                )[m[41m[m
+[32m+[m[32m                SELECT[m[41m [m
+[32m+[m[32m                    database,[m[41m[m
+[32m+[m[32m                    COUNT(*) as count[m[41m[m
+[32m+[m[32m                FROM keyword_db_data[m[41m[m
+[32m+[m[32m                GROUP BY database[m[41m[m
+[32m+[m[32m                ORDER BY count DESC[m[41m[m
+[32m+[m[32m                LIMIT {top_n};[m[41m[m
+[32m+[m[32m                """[m[41m[m
+[32m+[m[32m            elif entity_type == 'entity':[m[41m[m
+[32m+[m[32m                top_dbs_query = f"""[m[41m[m
+[32m+[m[32m                WITH entity_db_data AS ([m[41m[m
+[32m+[m[32m                    SELECT[m[41m [m
+[32m+[m[32m                        ud.database,[m[41m[m
+[32m+[m[32m                        jsonb_array_elements(dsc.named_entities) as entity[m[41m[m
+[32m+[m[32m                    FROM document_section_chunk dsc[m[41m[m
+[32m+[m[32m                    JOIN document_section ds ON dsc.document_section_id = ds.id[m[41m[m
+[32m+[m[32m                    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id[m[41m[m
+[32m+[m[32m                    WHERE ud.date IS NOT NULL AND ud.database IS NOT NULL[m[41m[m
+[32m+[m[32m                        AND dsc.named_entities IS NOT NULL[m[41m [m
+[32m+[m[32m                        AND jsonb_typeof(dsc.named_entities) = 'array'[m[41m[m
+[32m+[m[32m                        AND jsonb_array_length(dsc.named_entities) > 0[m[41m[m
+[32m+[m[32m                    {filter_sql}[m[41m[m
+[32m+[m[32m                )[m[41m[m
+[32m+[m[32m                SELECT[m[41m [m
+[32m+[m[32m                    database,[m[41m[m
+[32m+[m[32m                    COUNT(*) as count[m[41m[m
+[32m+[m[32m                FROM entity_db_data[m[41m[m
+[32m+[m[32m                GROUP BY database[m[41m[m
+[32m+[m[32m                ORDER BY count DESC[m[41m[m
+[32m+[m[32m                LIMIT {top_n};[m[41m[m
+[32m+[m[32m                """[m[41m[m
+             else:[m
+                 logging.error(f"Invalid entity type: {entity_type}")[m
+                 return pd.DataFrame(columns=['date', 'database', 'count'])[m
+[36m@@ -1126,6 +1301,52 @@[m [mdef fetch_database_time_series([m
+                 GROUP BY {date_trunc}, ud.database[m
+                 ORDER BY date, ud.database;[m
+                 """[m
+[32m+[m[32m            elif entity_type == 'keyword':[m[41m[m
+[32m+[m[32m                time_query = f"""[m[41m[m
+[32m+[m[32m                WITH keyword_time_data AS ([m[41m[m
+[32m+[m[32m                    SELECT[m[41m [m
+[32m+[m[32m                        ud.date,[m[41m[m
+[32m+[m[32m                        ud.database,[m[41m[m
+[32m+[m[32m                        unnest(dsc.keywords) as keyword[m[41m[m
+[32m+[m[32m                    FROM document_section_chunk dsc[m[41m[m
+[32m+[m[32m                    JOIN document_section ds ON dsc.document_section_id = ds.id[m[41m[m
+[32m+[m[32m                    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id[m[41m[m
+[32m+[m[32m                    WHERE ud.date IS NOT NULL AND ud.database IN :databases[m[41m[m
+[32m+[m[32m                        AND dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0[m[41m[m
+[32m+[m[32m                    {filter_sql}[m[41m[m
+[32m+[m[32m                )[m[41m[m
+[32m+[m[32m                SELECT[m[41m [m
+[32m+[m[32m                    DATE_TRUNC('{granularity}', date) as date,[m[41m[m
+[32m+[m[32m                    database,[m[41m[m
+[32m+[m[32m                    COUNT(*) as count[m[41m[m
+[32m+[m[32m                FROM keyword_time_data[m[41m[m
+[32m+[m[32m                GROUP BY DATE_TRUNC('{granularity}', date), database[m[41m[m
+[32m+[m[32m                ORDER BY date, database;[m[41m[m
+[32m+[m[32m                """[m[41m[m
+[32m+[m[32m            elif entity_type == 'entity':[m[41m[m
+[32m+[m[32m                time_query = f"""[m[41m[m
+[32m+[m[32m                WITH entity_time_data AS ([m[41m[m
+[32m+[m[32m                    SELECT[m[41m [m
+[32m+[m[32m                        ud.date,[m[41m[m
+[32m+[m[32m                        ud.database,[m[41m[m
+[32m+[m[32m                        jsonb_array_elements(dsc.named_entities) as entity[m[41m[m
+[32m+[m[32m                    FROM document_section_chunk dsc[m[41m[m
+[32m+[m[32m                    JOIN document_section ds ON dsc.document_section_id = ds.id[m[41m[m
+[32m+[m[32m                    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id[m[41m[m
+[32m+[m[32m                    WHERE ud.date IS NOT NULL AND ud.database IN :databases[m[41m[m
+[32m+[m[32m                        AND dsc.named_entities IS NOT NULL[m[41m [m
+[32m+[m[32m                        AND jsonb_typeof(dsc.named_entities) = 'array'[m[41m[m
+[32m+[m[32m                        AND jsonb_array_length(dsc.named_entities) > 0[m[41m[m
+[32m+[m[32m                    {filter_sql}[m[41m[m
+[32m+[m[32m                )[m[41m[m
+[32m+[m[32m                SELECT[m[41m [m
+[32m+[m[32m                    DATE_TRUNC('{granularity}', date) as date,[m[41m[m
+[32m+[m[32m                    database,[m[41m[m
+[32m+[m[32m                    COUNT(*) as count[m[41m[m
+[32m+[m[32m                FROM entity_time_data[m[41m[m
+[32m+[m[32m                GROUP BY DATE_TRUNC('{granularity}', date), database[m[41m[m
+[32m+[m[32m                ORDER BY date, database;[m[41m[m
+[32m+[m[32m                """[m[41m[m
+             [m
+             # Add top databases to params[m
+             params['databases'] = tuple(top_databases)[m
+[36m@@ -1167,6 +1388,788 @@[m [mdef _build_source_type_condition(source_type: Optional[str]) -> str:[m
+     return ""[m
+ [m
+ [m
+[32m+[m[32m@cached(timeout=3600)[m[41m[m
+[32m+[m[32mdef fetch_keywords_data([m[41m[m
+[32m+[m[32m    lang_val: Optional[str] = None,[m[41m[m
+[32m+[m[32m    db_val: Optional[str] = None,[m[41m[m
+[32m+[m[32m    source_type: Optional[str] = None,[m[41m[m
+[32m+[m[32m    date_range: Optional[Tuple[str, str]] = None[m[41m[m
+[32m+[m[32m):[m[41m[m
+[32m+[m[32m    """[m[41m[m
+[32m+[m[32m    Fetch keywords statistical data with optional filters.[m[41m[m
+[32m+[m[41m    [m
+[32m+[m[32m    Args:[m[41m[m
+[32m+[m[32m        lang_val: Language filter value[m[41m[m
+[32m+[m[32m        db_val: Database filter value[m[41m[m
+[32m+[m[32m        source_type: Source type filter value[m[41m[m
+[32m+[m[32m        date_range: Date range filter[m[41m[m
+[32m+[m[41m        [m
+[32m+[m[32m    Returns:[m[41m[m
+[32m+[m[32m        dict: Keywords data including statistics and distributions[m[41m[m
+[32m+[m[32m    """[m[41m[m
+[32m+[m[32m    start_time = time.time()[m[41m[m
+[32m+[m[32m    logging.info(f"Fetching keywords data with filters: lang={lang_val}, db={db_val}, source_type={source_type}")[m[41m[m
+[32m+[m[41m    [m
+[32m+[m[32m    if lang_val == 'ALL':[m[41m[m
+[32m+[m[32m        lang_val = None[m[41m[m
+[32m+[m[32m    if db_val == 'ALL':[m[41m[m
+[32m+[m[32m        db_val = None[m[41m[m
+[32m+[m[41m    [m
+[32m+[m[32m    try:[m[41m[m
+[32m+[m[32m        engine = get_engine()[m[41m[m
+[32m+[m[32m        with engine.connect() as conn:[m[41m[m
+[32m+[m[32m            # Base query parts for filtering[m[41m[m
+[32m+[m[32m            base_filters = _build_base_filters(lang_val, db_val, source_type, date_range)[m[41m[m
+[32m+[m[32m            params = base_filters['params'][m[41m[m
+[32m+[m[32m            filter_sql = base_filters['filter_sql'][m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Get total unique keywords and chunk statistics[m[41m[m
+[32m+[m[32m            stats_query = f"""[m[41m[m
+[32m+[m[32m            WITH keyword_data AS ([m[41m[m
+[32m+[m[32m                SELECT[m[41m [m
+[32m+[m[32m                    dsc.id as chunk_id,[m[41m[m
+[32m+[m[32m                    unnest(dsc.keywords) as keyword[m[41m[m
+[32m+[m[32m                FROM document_section_chunk dsc[m[41m[m
+[32m+[m[32m                JOIN document_section ds ON dsc.document_section_id = ds.id[m[41m[m
+[32m+[m[32m                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id[m[41m[m
+[32m+[m[32m                WHERE dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0[m[41m[m
+[32m+[m[32m                {filter_sql}[m[41m[m
+[32m+[m[32m            )[m[41m[m
+[32m+[m[32m            SELECT[m[41m [m
+[32m+[m[32m                COUNT(DISTINCT keyword) as unique_keywords,[m[41m[m
+[32m+[m[32m                COUNT(*) as total_keyword_occurrences,[m[41m[m
+[32m+[m[32m                COUNT(DISTINCT chunk_id) as chunks_with_keywords[m[41m[m
+[32m+[m[32m            FROM keyword_data;[m[41m[m
+[32m+[m[32m            """[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            stats_df = pd.read_sql(text(stats_query), conn, params=params)[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Get top keywords by frequency[m[41m[m
+[32m+[m[32m            top_keywords_query = f"""[m[41m[m
+[32m+[m[32m            WITH keyword_data AS ([m[41m[m
+[32m+[m[32m                SELECT[m[41m [m
+[32m+[m[32m                    unnest(dsc.keywords) as keyword[m[41m[m
+[32m+[m[32m                FROM document_section_chunk dsc[m[41m[m
+[32m+[m[32m                JOIN document_section ds ON dsc.document_section_id = ds.id[m[41m[m
+[32m+[m[32m                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id[m[41m[m
+[32m+[m[32m                WHERE dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0[m[41m[m
+[32m+[m[32m                {filter_sql}[m[41m[m
+[32m+[m[32m            )[m[41m[m
+[32m+[m[32m            SELECT[m[41m [m
+[32m+[m[32m                keyword,[m[41m[m
+[32m+[m[32m                COUNT(*) as count[m[41m[m
+[32m+[m[32m            FROM keyword_data[m[41m[m
+[32m+[m[32m            GROUP BY keyword[m[41m[m
+[32m+[m[32m            ORDER BY count DESC[m[41m[m
+[32m+[m[32m            LIMIT 20;[m[41m[m
+[32m+[m[32m            """[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            top_keywords_df = pd.read_sql(text(top_keywords_query), conn, params=params)[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Get keywords per chunk distribution[m[41m[m
+[32m+[m[32m            keywords_per_chunk_query = f"""[m[41m[m
+[32m+[m[32m            WITH chunk_keyword_counts AS ([m[41m[m
+[32m+[m[32m                SELECT[m[41m [m
+[32m+[m[32m                    dsc.id as chunk_id,[m[41m[m
+[32m+[m[32m                    array_length(dsc.keywords, 1) as keyword_count[m[41m[m
+[32m+[m[32m                FROM document_section_chunk dsc[m[41m[m
+[32m+[m[32m                JOIN document_section ds ON dsc.document_section_id = ds.id[m[41m[m
+[32m+[m[32m                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id[m[41m[m
+[32m+[m[32m                WHERE 1=1[m[41m[m
+[32m+[m[32m                {filter_sql}[m[41m[m
+[32m+[m[32m            )[m[41m[m
+[32m+[m[32m            SELECT[m[41m [m
+[32m+[m[32m                CASE[m[41m [m
+[32m+[m[32m                    WHEN keyword_count IS NULL OR keyword_count = 0 THEN '0'[m[41m[m
+[32m+[m[32m                    WHEN keyword_count BETWEEN 1 AND 5 THEN '1-5'[m[41m[m
+[32m+[m[32m                    WHEN keyword_count BETWEEN 6 AND 10 THEN '6-10'[m[41m[m
+[32m+[m[32m                    WHEN keyword_count BETWEEN 11 AND 15 THEN '11-15'[m[41m[m
+[32m+[m[32m                    WHEN keyword_count BETWEEN 16 AND 20 THEN '16-20'[m[41m[m
+[32m+[m[32m                    ELSE '20+'[m[41m[m
+[32m+[m[32m                END as keyword_range,[m[41m[m
+[32m+[m[32m                COUNT(*) as count,[m[41m[m
+[32m+[m[32m                CASE[m[41m [m
+[32m+[m[32m                    WHEN keyword_count IS NULL OR keyword_count = 0 THEN 0[m[41m[m
+[32m+[m[32m                    WHEN keyword_count BETWEEN 1 AND 5 THEN 1[m[41m[m
+[32m+[m[32m                    WHEN keyword_count BETWEEN 6 AND 10 THEN 2[m[41m[m
+[32m+[m[32m                    WHEN keyword_count BETWEEN 11 AND 15 THEN 3[m[41m[m
+[32m+[m[32m                    WHEN keyword_count BETWEEN 16 AND 20 THEN 4[m[41m[m
+[32m+[m[32m                    ELSE 5[m[41m[m
+[32m+[m[32m                END as sort_order[m[41m[m
+[32m+[m[32m            FROM chunk_keyword_counts[m[41m[m
+[32m+[m[32m            GROUP BY keyword_range, sort_order[m[41m[m
+[32m+[m[32m            ORDER BY sort_order;[m[41m[m
+[32m+[m[32m            """[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            dist_df = pd.read_sql(text(keywords_per_chunk_query), conn, params=params)[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Get language distribution of keywords[m[41m[m
+[32m+[m[32m            lang_dist_query = f"""[m[41m[m
+[32m+[m[32m            WITH keyword_lang_data AS ([m[41m[m
+[32m+[m[32m                SELECT[m[41m [m
+[32m+[m[32m                    ud.language,[m[41m[m
+[32m+[m[32m                    unnest(dsc.keywords) as keyword[m[41m[m
+[32m+[m[32m                FROM document_section_chunk dsc[m[41m[m
+[32m+[m[32m                JOIN document_section ds ON dsc.document_section_id = ds.id[m[41m[m
+[32m+[m[32m                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id[m[41m[m
+[32m+[m[32m                WHERE dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0[m[41m[m
+[32m+[m[32m                {filter_sql}[m[41m[m
+[32m+[m[32m            )[m[41m[m
+[32m+[m[32m            SELECT[m[41m [m
+[32m+[m[32m                language,[m[41m[m
+[32m+[m[32m                COUNT(DISTINCT keyword) as unique_keywords,[m[41m[m
+[32m+[m[32m                COUNT(*) as total_occurrences[m[41m[m
+[32m+[m[32m            FROM keyword_lang_data[m[41m[m
+[32m+[m[32m            GROUP BY language[m[41m[m
+[32m+[m[32m            ORDER BY total_occurrences DESC;[m[41m[m
+[32m+[m[32m            """[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            lang_df = pd.read_sql(text(lang_dist_query), conn, params=params)[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Get database distribution of keywords[m[41m[m
+[32m+[m[32m            db_dist_query = f"""[m[41m[m
+[32m+[m[32m            WITH keyword_db_data AS ([m[41m[m
+[32m+[m[32m                SELECT[m[41m [m
+[32m+[m[32m                    ud.database,[m[41m[m
+[32m+[m[32m                    unnest(dsc.keywords) as keyword[m[41m[m
+[32m+[m[32m                FROM document_section_chunk dsc[m[41m[m
+[32m+[m[32m                JOIN document_section ds ON dsc.document_section_id = ds.id[m[41m[m
+[32m+[m[32m                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id[m[41m[m
+[32m+[m[32m                WHERE dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0[m[41m[m
+[32m+[m[32m                {filter_sql}[m[41m[m
+[32m+[m[32m            )[m[41m[m
+[32m+[m[32m            SELECT[m[41m [m
+[32m+[m[32m                database,[m[41m[m
+[32m+[m[32m                COUNT(DISTINCT keyword) as unique_keywords,[m[41m[m
+[32m+[m[32m                COUNT(*) as total_occurrences[m[41m[m
+[32m+[m[32m            FROM keyword_db_data[m[41m[m
+[32m+[m[32m            GROUP BY database[m[41m[m
+[32m+[m[32m            ORDER BY total_occurrences DESC[m[41m[m
+[32m+[m[32m            LIMIT 10;[m[41m[m
+[32m+[m[32m            """[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            db_df = pd.read_sql(text(db_dist_query), conn, params=params)[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Get total chunks for coverage calculation[m[41m[m
+[32m+[m[32m            total_chunks_query = f"""[m[41m[m
+[32m+[m[32m            SELECT COUNT(DISTINCT dsc.id) as total_chunks[m[41m[m
+[32m+[m[32m            FROM document_section_chunk dsc[m[41m[m
+[32m+[m[32m            JOIN document_section ds ON dsc.document_section_id = ds.id[m[41m[m
+[32m+[m[32m            JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id[m[41m[m
+[32m+[m[32m            WHERE 1=1[m[41m[m
+[32m+[m[32m            {filter_sql}[m[41m[m
+[32m+[m[32m            """[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            total_chunks_df = pd.read_sql(text(total_chunks_query), conn, params=params)[m[41m[m
+[32m+[m[32m            total_chunks = int(total_chunks_df['total_chunks'].iloc[0])[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Extract statistics[m[41m[m
+[32m+[m[32m            unique_keywords = int(stats_df['unique_keywords'].iloc[0]) if not stats_df.empty else 0[m[41m[m
+[32m+[m[32m            total_keyword_occurrences = int(stats_df['total_keyword_occurrences'].iloc[0]) if not stats_df.empty else 0[m[41m[m
+[32m+[m[32m            chunks_with_keywords = int(stats_df['chunks_with_keywords'].iloc[0]) if not stats_df.empty else 0[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Calculate coverage and averages[m[41m[m
+[32m+[m[32m            keyword_coverage = round((chunks_with_keywords / total_chunks * 100), 1) if total_chunks > 0 else 0[m[41m[m
+[32m+[m[32m            avg_keywords_per_chunk = round(total_keyword_occurrences / chunks_with_keywords, 2) if chunks_with_keywords > 0 else 0[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Process top keywords[m[41m[m
+[32m+[m[32m            top_keywords_labels = [][m[41m[m
+[32m+[m[32m            top_keywords_values = [][m[41m[m
+[32m+[m[32m            if not top_keywords_df.empty:[m[41m[m
+[32m+[m[32m                top_keywords_labels = top_keywords_df['keyword'].tolist()[m[41m[m
+[32m+[m[32m                top_keywords_values = top_keywords_df['count'].tolist()[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Process distribution data[m[41m[m
+[32m+[m[32m            dist_labels = [][m[41m[m
+[32m+[m[32m            dist_values = [][m[41m[m
+[32m+[m[32m            dist_percentages = [][m[41m[m
+[32m+[m[32m            if not dist_df.empty:[m[41m[m
+[32m+[m[32m                dist_labels = dist_df['keyword_range'].tolist()[m[41m[m
+[32m+[m[32m                dist_values = dist_df['count'].tolist()[m[41m[m
+[32m+[m[32m                dist_percentages = [round((v / total_chunks * 100), 1) if total_chunks > 0 else 0 for v in dist_values][m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Process language distribution[m[41m[m
+[32m+[m[32m            lang_labels = [][m[41m[m
+[32m+[m[32m            lang_unique = [][m[41m[m
+[32m+[m[32m            lang_total = [][m[41m[m
+[32m+[m[32m            if not lang_df.empty:[m[41m[m
+[32m+[m[32m                lang_labels = lang_df['language'].tolist()[m[41m[m
+[32m+[m[32m                lang_unique = lang_df['unique_keywords'].tolist()[m[41m[m
+[32m+[m[32m                lang_total = lang_df['total_occurrences'].tolist()[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Process database distribution[m[41m[m
+[32m+[m[32m            db_labels = [][m[41m[m
+[32m+[m[32m            db_unique = [][m[41m[m
+[32m+[m[32m            db_total = [][m[41m[m
+[32m+[m[32m            if not db_df.empty:[m[41m[m
+[32m+[m[32m                db_labels = db_df['database'].tolist()[m[41m[m
+[32m+[m[32m                db_unique = db_df['unique_keywords'].tolist()[m[41m[m
+[32m+[m[32m                db_total = db_df['total_occurrences'].tolist()[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            keywords_data = {[m[41m[m
+[32m+[m[32m                "total_unique_keywords": unique_keywords,[m[41m[m
+[32m+[m[32m                "total_keyword_occurrences": total_keyword_occurrences,[m[41m[m
+[32m+[m[32m                "chunks_with_keywords": chunks_with_keywords,[m[41m[m
+[32m+[m[32m                "keyword_coverage": keyword_coverage,[m[41m[m
+[32m+[m[32m                "avg_keywords_per_chunk": avg_keywords_per_chunk,[m[41m[m
+[32m+[m[32m                "total_chunks": total_chunks,[m[41m[m
+[32m+[m[32m                "top_keywords": {[m[41m[m
+[32m+[m[32m                    "labels": top_keywords_labels,[m[41m[m
+[32m+[m[32m                    "values": top_keywords_values[m[41m[m
+[32m+[m[32m                },[m[41m[m
+[32m+[m[32m                "keywords_per_chunk_distribution": {[m[41m[m
+[32m+[m[32m                    "labels": dist_labels,[m[41m[m
+[32m+[m[32m                    "values": dist_values,[m[41m[m
+[32m+[m[32m                    "percentages": dist_percentages[m[41m[m
+[32m+[m[32m                },[m[41m[m
+[32m+[m[32m                "by_language": {[m[41m[m
+[32m+[m[32m                    "labels": lang_labels,[m[41m[m
+[32m+[m[32m                    "unique_keywords": lang_unique,[m[41m[m
+[32m+[m[32m                    "total_occurrences": lang_total[m[41m[m
+[32m+[m[32m                },[m[41m[m
+[32m+[m[32m                "by_database": {[m[41m[m
+[32m+[m[32m                    "labels": db_labels,[m[41m[m
+[32m+[m[32m                    "unique_keywords": db_unique,[m[41m[m
+[32m+[m[32m                    "total_occurrences": db_total[m[41m[m
+[32m+[m[32m                }[m[41m[m
+[32m+[m[32m            }[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            end_time = time.time()[m[41m[m
+[32m+[m[32m            logging.info(f"Keywords data fetched in {end_time - start_time:.2f} seconds")[m[41m[m
+[32m+[m[32m            return keywords_data[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m    except Exception as e:[m[41m[m
+[32m+[m[32m        logging.error(f"Error fetching keywords data: {e}")[m[41m[m
+[32m+[m[32m        # Return empty data structure in case of error[m[41m[m
+[32m+[m[32m        return {[m[41m[m
+[32m+[m[32m            "total_unique_keywords": 0,[m[41m[m
+[32m+[m[32m            "total_keyword_occurrences": 0,[m[41m[m
+[32m+[m[32m            "chunks_with_keywords": 0,[m[41m[m
+[32m+[m[32m            "keyword_coverage": 0,[m[41m[m
+[32m+[m[32m            "avg_keywords_per_chunk": 0,[m[41m[m
+[32m+[m[32m            "total_chunks": 0,[m[41m[m
+[32m+[m[32m            "top_keywords": {[m[41m[m
+[32m+[m[32m                "labels": [],[m[41m[m
+[32m+[m[32m                "values": [][m[41m[m
+[32m+[m[32m            },[m[41m[m
+[32m+[m[32m            "keywords_per_chunk_distribution": {[m[41m[m
+[32m+[m[32m                "labels": [],[m[41m[m
+[32m+[m[32m                "values": [],[m[41m[m
+[32m+[m[32m                "percentages": [][m[41m[m
+[32m+[m[32m            },[m[41m[m
+[32m+[m[32m            "by_language": {[m[41m[m
+[32m+[m[32m                "labels": [],[m[41m[m
+[32m+[m[32m                "unique_keywords": [],[m[41m[m
+[32m+[m[32m                "total_occurrences": [][m[41m[m
+[32m+[m[32m            },[m[41m[m
+[32m+[m[32m            "by_database": {[m[41m[m
+[32m+[m[32m                "labels": [],[m[41m[m
+[32m+[m[32m                "unique_keywords": [],[m[41m[m
+[32m+[m[32m                "total_occurrences": [][m[41m[m
+[32m+[m[32m            }[m[41m[m
+[32m+[m[32m        }[m[41m[m
+[32m+[m[41m[m
+[32m+[m[41m[m
+[32m+[m[32m@cached(timeout=3600)[m[41m[m
+[32m+[m[32mdef fetch_named_entities_data([m[41m[m
+[32m+[m[32m    lang_val: Optional[str] = None,[m[41m[m
+[32m+[m[32m    db_val: Optional[str] = None,[m[41m[m
+[32m+[m[32m    source_type: Optional[str] = None,[m[41m[m
+[32m+[m[32m    date_range: Optional[Tuple[str, str]] = None[m[41m[m
+[32m+[m[32m):[m[41m[m
+[32m+[m[32m    """[m[41m[m
+[32m+[m[32m    Fetch named entities statistical data with optional filters.[m[41m[m
+[32m+[m[41m    [m
+[32m+[m[32m    Args:[m[41m[m
+[32m+[m[32m        lang_val: Language filter value[m[41m[m
+[32m+[m[32m        db_val: Database filter value[m[41m[m
+[32m+[m[32m        source_type: Source type filter value[m[41m[m
+[32m+[m[32m        date_range: Date range filter[m[41m[m
+[32m+[m[41m        [m
+[32m+[m[32m    Returns:[m[41m[m
+[32m+[m[32m        dict: Named entities data including statistics and distributions[m[41m[m
+[32m+[m[32m    """[m[41m[m
+[32m+[m[32m    start_time = time.time()[m[41m[m
+[32m+[m[32m    logging.info(f"Fetching named entities data with filters: lang={lang_val}, db={db_val}, source_type={source_type}")[m[41m[m
+[32m+[m[41m    [m
+[32m+[m[32m    if lang_val == 'ALL':[m[41m[m
+[32m+[m[32m        lang_val = None[m[41m[m
+[32m+[m[32m    if db_val == 'ALL':[m[41m[m
+[32m+[m[32m        db_val = None[m[41m[m
+[32m+[m[41m    [m
+[32m+[m[32m    try:[m[41m[m
+[32m+[m[32m        engine = get_engine()[m[41m[m
+[32m+[m[32m        with engine.connect() as conn:[m[41m[m
+[32m+[m[32m            # Base query parts for filtering[m[41m[m
+[32m+[m[32m            base_filters = _build_base_filters(lang_val, db_val, source_type, date_range)[m[41m[m
+[32m+[m[32m            params = base_filters['params'][m[41m[m
+[32m+[m[32m            filter_sql = base_filters['filter_sql'][m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Get total unique entities and chunk statistics[m[41m[m
+[32m+[m[32m            # Named entities are stored as JSONB array directly: [{"text": "...", "label": "..."}][m[41m[m
+[32m+[m[32m            stats_query = f"""[m[41m[m
+[32m+[m[32m            WITH entity_data AS ([m[41m[m
+[32m+[m[32m                SELECT[m[41m [m
+[32m+[m[32m                    dsc.id as chunk_id,[m[41m[m
+[32m+[m[32m                    jsonb_array_elements(dsc.named_entities) as entity[m[41m[m
+[32m+[m[32m                FROM document_section_chunk dsc[m[41m[m
+[32m+[m[32m                JOIN document_section ds ON dsc.document_section_id = ds.id[m[41m[m
+[32m+[m[32m                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id[m[41m[m
+[32m+[m[32m                WHERE dsc.named_entities IS NOT NULL[m[41m [m
+[32m+[m[32m                    AND jsonb_typeof(dsc.named_entities) = 'array'[m[41m[m
+[32m+[m[32m                    AND jsonb_array_length(dsc.named_entities) > 0[m[41m[m
+[32m+[m[32m                {filter_sql}[m[41m[m
+[32m+[m[32m            )[m[41m[m
+[32m+[m[32m            SELECT[m[41m [m
+[32m+[m[32m                COUNT(DISTINCT entity->>'text') as unique_entities,[m[41m[m
+[32m+[m[32m                COUNT(*) as total_entity_occurrences,[m[41m[m
+[32m+[m[32m                COUNT(DISTINCT chunk_id) as chunks_with_entities,[m[41m[m
+[32m+[m[32m                COUNT(DISTINCT entity->>'label') as entity_types[m[41m[m
+[32m+[m[32m            FROM entity_data;[m[41m[m
+[32m+[m[32m            """[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            stats_df = pd.read_sql(text(stats_query), conn, params=params)[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Get top entities by frequency[m[41m[m
+[32m+[m[32m            top_entities_query = f"""[m[41m[m
+[32m+[m[32m            WITH entity_data AS ([m[41m[m
+[32m+[m[32m                SELECT[m[41m [m
+[32m+[m[32m                    jsonb_array_elements(dsc.named_entities) as entity[m[41m[m
+[32m+[m[32m                FROM document_section_chunk dsc[m[41m[m
+[32m+[m[32m                JOIN document_section ds ON dsc.document_section_id = ds.id[m[41m[m
+[32m+[m[32m                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id[m[41m[m
+[32m+[m[32m                WHERE dsc.named_entities IS NOT NULL[m[41m [m
+[32m+[m[32m                    AND jsonb_typeof(dsc.named_entities) = 'array'[m[41m[m
+[32m+[m[32m                    AND jsonb_array_length(dsc.named_entities) > 0[m[41m[m
+[32m+[m[32m                {filter_sql}[m[41m[m
+[32m+[m[32m            )[m[41m[m
+[32m+[m[32m            SELECT[m[41m [m
+[32m+[m[32m                entity->>'text' as entity_text,[m[41m[m
+[32m+[m[32m                entity->>'label' as entity_type,[m[41m[m
+[32m+[m[32m                COUNT(*) as count[m[41m[m
+[32m+[m[32m            FROM entity_data[m[41m[m
+[32m+[m[32m            GROUP BY entity_text, entity_type[m[41m[m
+[32m+[m[32m            ORDER BY count DESC[m[41m[m
+[32m+[m[32m            LIMIT 20;[m[41m[m
+[32m+[m[32m            """[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            top_entities_df = pd.read_sql(text(top_entities_query), conn, params=params)[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Get entity types distribution[m[41m[m
+[32m+[m[32m            entity_types_query = f"""[m[41m[m
+[32m+[m[32m            WITH entity_data AS ([m[41m[m
+[32m+[m[32m                SELECT[m[41m [m
+[32m+[m[32m                    jsonb_array_elements(dsc.named_entities) as entity[m[41m[m
+[32m+[m[32m                FROM document_section_chunk dsc[m[41m[m
+[32m+[m[32m                JOIN document_section ds ON dsc.document_section_id = ds.id[m[41m[m
+[32m+[m[32m                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id[m[41m[m
+[32m+[m[32m                WHERE dsc.named_entities IS NOT NULL[m[41m [m
+[32m+[m[32m                    AND jsonb_typeof(dsc.named_entities) = 'array'[m[41m[m
+[32m+[m[32m                    AND jsonb_array_length(dsc.named_entities) > 0[m[41m[m
+[32m+[m[32m                {filter_sql}[m[41m[m
+[32m+[m[32m            )[m[41m[m
+[32m+[m[32m            SELECT[m[41m [m
+[32m+[m[32m                entity->>'label' as entity_type,[m[41m[m
+[32m+[m[32m                COUNT(*) as count,[m[41m[m
+[32m+[m[32m                COUNT(DISTINCT entity->>'text') as unique_entities[m[41m[m
+[32m+[m[32m            FROM entity_data[m[41m[m
+[32m+[m[32m            GROUP BY entity_type[m[41m[m
+[32m+[m[32m            ORDER BY count DESC;[m[41m[m
+[32m+[m[32m            """[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            entity_types_df = pd.read_sql(text(entity_types_query), conn, params=params)[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Get entities per chunk distribution[m[41m[m
+[32m+[m[32m            entities_per_chunk_query = f"""[m[41m[m
+[32m+[m[32m            WITH chunk_entity_counts AS ([m[41m[m
+[32m+[m[32m                SELECT[m[41m [m
+[32m+[m[32m                    dsc.id as chunk_id,[m[41m[m
+[32m+[m[32m                    CASE[m[41m [m
+[32m+[m[32m                        WHEN dsc.named_entities IS NULL[m[41m [m
+[32m+[m[32m                            OR jsonb_typeof(dsc.named_entities) != 'array' THEN 0[m[41m[m
+[32m+[m[32m                        ELSE jsonb_array_length(dsc.named_entities)[m[41m[m
+[32m+[m[32m                    END as entity_count[m[41m[m
+[32m+[m[32m                FROM document_section_chunk dsc[m[41m[m
+[32m+[m[32m                JOIN document_section ds ON dsc.document_section_id = ds.id[m[41m[m
+[32m+[m[32m                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id[m[41m[m
+[32m+[m[32m                WHERE 1=1[m[41m[m
+[32m+[m[32m                {filter_sql}[m[41m[m
+[32m+[m[32m            )[m[41m[m
+[32m+[m[32m            SELECT[m[41m [m
+[32m+[m[32m                CASE[m[41m [m
+[32m+[m[32m                    WHEN entity_count = 0 THEN '0'[m[41m[m
+[32m+[m[32m                    WHEN entity_count BETWEEN 1 AND 5 THEN '1-5'[m[41m[m
+[32m+[m[32m                    WHEN entity_count BETWEEN 6 AND 10 THEN '6-10'[m[41m[m
+[32m+[m[32m                    WHEN entity_count BETWEEN 11 AND 20 THEN '11-20'[m[41m[m
+[32m+[m[32m                    WHEN entity_count BETWEEN 21 AND 30 THEN '21-30'[m[41m[m
+[32m+[m[32m                    ELSE '30+'[m[41m[m
+[32m+[m[32m                END as entity_range,[m[41m[m
+[32m+[m[32m                COUNT(*) as count,[m[41m[m
+[32m+[m[32m                CASE[m[41m [m
+[32m+[m[32m                    WHEN entity_count = 0 THEN 0[m[41m[m
+[32m+[m[32m                    WHEN entity_count BETWEEN 1 AND 5 THEN 1[m[41m[m
+[32m+[m[32m                    WHEN entity_count BETWEEN 6 AND 10 THEN 2[m[41m[m
+[32m+[m[32m                    WHEN entity_count BETWEEN 11 AND 20 THEN 3[m[41m[m
+[32m+[m[32m                    WHEN entity_count BETWEEN 21 AND 30 THEN 4[m[41m[m
+[32m+[m[32m                    ELSE 5[m[41m[m
+[32m+[m[32m                END as sort_order[m[41m[m
+[32m+[m[32m            FROM chunk_entity_counts[m[41m[m
+[32m+[m[32m            GROUP BY entity_range, sort_order[m[41m[m
+[32m+[m[32m            ORDER BY sort_order;[m[41m[m
+[32m+[m[32m            """[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            dist_df = pd.read_sql(text(entities_per_chunk_query), conn, params=params)[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Get language distribution of entities[m[41m[m
+[32m+[m[32m            lang_dist_query = f"""[m[41m[m
+[32m+[m[32m            WITH entity_lang_data AS ([m[41m[m
+[32m+[m[32m                SELECT[m[41m [m
+[32m+[m[32m                    ud.language,[m[41m[m
+[32m+[m[32m                    jsonb_array_elements(dsc.named_entities) as entity[m[41m[m
+[32m+[m[32m                FROM document_section_chunk dsc[m[41m[m
+[32m+[m[32m                JOIN document_section ds ON dsc.document_section_id = ds.id[m[41m[m
+[32m+[m[32m                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id[m[41m[m
+[32m+[m[32m                WHERE dsc.named_entities IS NOT NULL[m[41m [m
+[32m+[m[32m                    AND jsonb_typeof(dsc.named_entities) = 'array'[m[41m[m
+[32m+[m[32m                    AND jsonb_array_length(dsc.named_entities) > 0[m[41m[m
+[32m+[m[32m                {filter_sql}[m[41m[m
+[32m+[m[32m            )[m[41m[m
+[32m+[m[32m            SELECT[m[41m [m
+[32m+[m[32m                language,[m[41m[m
+[32m+[m[32m                COUNT(DISTINCT entity->>'text') as unique_entities,[m[41m[m
+[32m+[m[32m                COUNT(*) as total_occurrences[m[41m[m
+[32m+[m[32m            FROM entity_lang_data[m[41m[m
+[32m+[m[32m            GROUP BY language[m[41m[m
+[32m+[m[32m            ORDER BY total_occurrences DESC;[m[41m[m
+[32m+[m[32m            """[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            lang_df = pd.read_sql(text(lang_dist_query), conn, params=params)[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Get database distribution of entities[m[41m[m
+[32m+[m[32m            db_dist_query = f"""[m[41m[m
+[32m+[m[32m            WITH entity_db_data AS ([m[41m[m
+[32m+[m[32m                SELECT[m[41m [m
+[32m+[m[32m                    ud.database,[m[41m[m
+[32m+[m[32m                    jsonb_array_elements(dsc.named_entities) as entity[m[41m[m
+[32m+[m[32m                FROM document_section_chunk dsc[m[41m[m
+[32m+[m[32m                JOIN document_section ds ON dsc.document_section_id = ds.id[m[41m[m
+[32m+[m[32m                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id[m[41m[m
+[32m+[m[32m                WHERE dsc.named_entities IS NOT NULL[m[41m [m
+[32m+[m[32m                    AND jsonb_typeof(dsc.named_entities) = 'array'[m[41m[m
+[32m+[m[32m                    AND jsonb_array_length(dsc.named_entities) > 0[m[41m[m
+[32m+[m[32m                {filter_sql}[m[41m[m
+[32m+[m[32m            )[m[41m[m
+[32m+[m[32m            SELECT[m[41m [m
+[32m+[m[32m                database,[m[41m[m
+[32m+[m[32m                COUNT(DISTINCT entity->>'text') as unique_entities,[m[41m[m
+[32m+[m[32m                COUNT(*) as total_occurrences[m[41m[m
+[32m+[m[32m            FROM entity_db_data[m[41m[m
+[32m+[m[32m            GROUP BY database[m[41m[m
+[32m+[m[32m            ORDER BY total_occurrences DESC[m[41m[m
+[32m+[m[32m            LIMIT 10;[m[41m[m
+[32m+[m[32m            """[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            db_df = pd.read_sql(text(db_dist_query), conn, params=params)[m[41m[m
+[32m+[m[41m            [m
+[32m+[m[32m            # Get total chunks for coverage calculation[m[41m[m
+[

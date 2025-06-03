@@ -145,13 +145,29 @@ def create_sunburst_chart(df: pd.DataFrame, title: str = "Taxonomic Element Dist
     outer_counts, middle_counts, inner_counts, _ = process_data_for_sunburst(df)
     color_map = create_color_mapping(inner_counts, middle_counts, outer_counts)
     
+    # We need to manually apply colors after creating the figure
     fig = px.sunburst(
         outer_counts,
         path=['category', 'subcategory', 'sub_subcategory'],
-        values='count',
-        color='category',
-        color_discrete_map=color_map
+        values='count'
     )
+    
+    # Apply the color mapping manually to the traces
+    # Get the labels from the figure data
+    if fig.data and len(fig.data) > 0:
+        labels = fig.data[0].labels
+        colors = []
+        
+        # Map each label to its color from our color_map
+        for label in labels:
+            if label in color_map:
+                colors.append(color_map[label])
+            else:
+                # Default color if not found
+                colors.append('#cccccc')
+        
+        # Update the trace with our custom colors
+        fig.update_traces(marker=dict(colors=colors))
     
     # Update layout for better readability with consistent styling for title
     fig.update_layout(
@@ -170,8 +186,11 @@ def create_sunburst_chart(df: pd.DataFrame, title: str = "Taxonomic Element Dist
     )
     
     # Add percentage hover info WITH THOUSANDS SEPARATORS
+    # Also update text display to use HTML line breaks
     fig.update_traces(
-        hovertemplate='<b>%{label}</b><br>Count: %{value:,}<br>Percentage: %{percentRoot:.2f}%'
+        hovertemplate='<b>%{label}</b><br>Count: %{value:,}<br>Percentage: %{percentRoot:.2f}%',
+        textinfo='label+percent entry',
+        insidetextorientation='radial'
     )
     
     return fig

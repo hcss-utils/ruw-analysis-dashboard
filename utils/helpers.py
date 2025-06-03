@@ -73,7 +73,7 @@ def hex_to_rgba(hex_color: str, alpha: float) -> str:
 
 def format_chunk_row(row: Dict[str, Any]) -> html.Div:
     """
-    Format a chunk row for display.
+    Format a chunk row for display with enhanced metadata.
     
     Args:
         row: Row data as a dictionary
@@ -86,14 +86,131 @@ def format_chunk_row(row: Dict[str, Any]) -> html.Div:
         document_id = row.get('document_id', 'N/A')
         if isinstance(document_id, int):
             document_id = f"{document_id:,}"
-            
-        metadata = html.P([
-            html.B("Document ID: "), f"{document_id} | ",
+        
+        # Extract and format language with flags
+        language = row.get('language', 'N/A')
+        lang_flags = {
+            'RU': '🇷🇺',
+            'EN': '🇬🇧',
+            'UK': '🇺🇦',
+            'US': '🇺🇸',
+            'DE': '🇩🇪',
+            'FR': '🇫🇷',
+            'ES': '🇪🇸',
+            'IT': '🇮🇹',
+            'PL': '🇵🇱',
+            'NL': '🇳🇱'
+        }
+        flag = lang_flags.get(language, '🌐')
+        lang_display = f"{flag} {language}"
+        
+        # Extract chunk position info
+        chunk_index = row.get('chunk_index', None)
+        sequence_number = row.get('sequence_number', None)
+        position_info = ""
+        if chunk_index is not None:
+            position_info = f"Chunk {chunk_index + 1}"
+            if sequence_number is not None:
+                position_info += f" in Section {sequence_number}"
+        
+        # First line of metadata
+        metadata_line1 = html.P([
+            html.B("Document: "), f"{document_id} | ",
             html.B("Database: "), f"{row.get('database', 'N/A')} | ",
-            html.B("Heading: "), f"{row.get('heading_title', 'N/A')} | ",
-            html.B("Date: "), f"{row.get('date', 'N/A')} | ",
-            html.B("Author: "), f"{row.get('author', 'N/A')}"
+            html.B("Language: "), lang_display, " | ",
+            html.B("Date: "), f"{row.get('date', 'N/A')}"
+        ], style={'margin-bottom': '3px'})
+        
+        # Second line of metadata
+        heading = row.get('heading_title', 'N/A')
+        author = row.get('author', 'N/A') if row.get('author') else 'Unknown'
+        full_text = "✓ Full text" if row.get('is_full_text_present') else "⚠ Partial text"
+        
+        metadata_line2 = html.P([
+            html.B("Section: "), f"{heading} ", 
+            f"({position_info})" if position_info else "", " | ",
+            html.B("Author: "), f"{author} | ",
+            html.Span(full_text, style={'color': 'green' if row.get('is_full_text_present') else 'orange'})
+        ], style={'margin-bottom': '3px'})
+        
+        # Extract and format keywords (show top 5)
+        keywords = row.get('keywords', [])
+        if keywords and isinstance(keywords, list):
+            top_keywords = keywords[:5]
+            keyword_text = ", ".join(top_keywords)
+            if len(keywords) > 5:
+                keyword_text += f" (+{len(keywords) - 5} more)"
+        else:
+            keyword_text = "None"
+        
+        # Extract and format named entities (show top 5)
+        entities = row.get('named_entities', [])
+        entity_summary = []
+        if entities and isinstance(entities, list):
+            # Count entities by type
+            entity_types = {}
+            for entity in entities[:10]:  # Process first 10 for summary
+                if isinstance(entity, dict) and 'label' in entity:
+                    entity_type = entity['label']
+                    entity_types[entity_type] = entity_types.get(entity_type, 0) + 1
+            
+            # Format entity summary
+            for etype, count in sorted(entity_types.items(), key=lambda x: x[1], reverse=True)[:5]:
+                entity_summary.append(f"{etype}({count})")
+            
+            if len(entities) > 10:
+                entity_summary.append(f"+{len(entities) - 10} more")
+        
+        entity_text = ", ".join(entity_summary) if entity_summary else "None"
+        
+        # Third line with keywords and entities
+        metadata_line3 = html.P([
+            html.B("Keywords: "), html.Span(keyword_text, style={'color': '#666', 'font-style': 'italic'}), " | ",
+            html.B("Entities: "), html.Span(entity_text, style={'color': '#666', 'font-style': 'italic'})
         ], style={'margin-bottom': '5px'})
+        
+        # Citation header with card-style design
+        author = row.get('author', 'Unknown') if row.get('author') else 'Unknown'
+        section = row.get('heading_title', 'N/A')
+        source = row.get('source', 'N/A') if row.get('source') else 'N/A'
+        date = row.get('date', 'N/A')
+        database = row.get('database', 'N/A')
+        document_id = row.get('document_id', 'N/A')
+        if isinstance(document_id, int):
+            document_id = f"{document_id:,}"
+        full_text_status = "✓ Full" if row.get('is_full_text_present') else "⚠ Partial"
+        
+        # Build compact citation with keywords and entities inline
+        citation_parts = [
+            html.Span([html.Strong("Author: "), author], style={'margin-right': '10px'}),
+            html.Span([html.Strong("Section: "), section], style={'margin-right': '10px'}),
+            html.Span([html.Strong("Source: "), source], style={'margin-right': '10px'}),
+            html.Span([html.Strong("Date: "), date], style={'margin-right': '10px'}),
+            html.Span([html.Strong("Database: "), database], style={'margin-right': '10px'}),
+            html.Span([html.Strong("Language: "), lang_display], style={'margin-right': '10px'}),
+            html.Span([html.Strong("Document: "), document_id], style={'margin-right': '10px'}),
+            html.Span([html.Strong("Text: "), full_text_status], style={'color': 'green' if row.get('is_full_text_present') else 'orange', 'margin-right': '10px'}),
+            html.Span([html.Strong("Keywords: "), keyword_text], style={'margin-right': '10px'}),
+            html.Span([html.Strong("Entities: "), entity_text])
+        ]
+        
+        citation = html.Div([
+            html.Div(citation_parts, style={
+                'font-size': '13px',
+                'color': '#333',
+                'line-height': '1.4'
+            })
+        ], style={
+            'background-color': '#f8f9fa',
+            'border': '1px solid #dee2e6',
+            'border-left': '4px solid #13376f',
+            'padding': '12px 15px',
+            'border-radius': '6px',
+            'margin-bottom': '15px',
+            'box-shadow': '0 1px 3px rgba(0,0,0,0.1)'
+        })
+        
+        # No separate metadata section needed since keywords/entities are in citation
 
         chunk_text = html.Div([
             html.P(row.get('chunk_text', 'No text available'))
@@ -130,9 +247,12 @@ def format_chunk_row(row: Dict[str, Any]) -> html.Div:
                    'margin-bottom': '10px', 'width': '100%'}
         )
 
-        # Two column layout for text and reasoning
+        # Layout with compact citation header at top
         row_layout = html.Div([
-            html.Div([metadata], style={'border-bottom': '1px solid #ddd', 'padding-bottom': '8px', 'margin-bottom': '10px'}),
+            # Citation header with all metadata including keywords and entities
+            citation,
+            
+            # Two column layout for text and reasoning
             dbc.Row([
                 dbc.Col([
                     html.H6("Text", style={'border-bottom': '1px solid #eee', 'padding-bottom': '5px'}),
