@@ -189,7 +189,7 @@ def create_dash_app() -> dash.Dash:
             <link rel="preload" href="/_dash-component-suites/dash/dcc/async-slider.js" as="script">
             <link rel="preload" href="/_dash-component-suites/dash/dcc/async-graph.js" as="script">
             <link rel="preload" href="/_dash-component-suites/dash/dcc/async-plotlyjs.js" as="script">
-            <script src="/static/loading-fix.js?v=1"></script>
+            <script src="/static/dash-loading-monitor.js?v=1"></script>
             <script>
                 // Error handler for async component loading
                 window.addEventListener('error', function(e) {
