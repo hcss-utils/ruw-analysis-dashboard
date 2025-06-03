@@ -184,11 +184,12 @@ def create_dash_app() -> dash.Dash:
             {%favicon%}
             {%css%}
             <link rel="stylesheet" href="/static/custom.css?v=4">
+            <link rel="stylesheet" href="/static/responsive-fix.css?v=1">
             <!-- Preload critical scripts to prevent loading errors -->
             <link rel="preload" href="/_dash-component-suites/dash/dcc/async-slider.js" as="script">
             <link rel="preload" href="/_dash-component-suites/dash/dcc/async-graph.js" as="script">
             <link rel="preload" href="/_dash-component-suites/dash/dcc/async-plotlyjs.js" as="script">
-            <script src="/static/loading.js?v=3"></script>
+            <script src="/static/loading-fix.js?v=1"></script>
             <script>
                 // Error handler for async component loading
                 window.addEventListener('error', function(e) {

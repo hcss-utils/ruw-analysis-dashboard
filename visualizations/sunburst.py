@@ -138,7 +138,7 @@ def create_sunburst_chart(df: pd.DataFrame, title: str = "Taxonomic Element Dist
                 'y': 0.95
             },
             height=700,
-            width=700
+            autosize=True
         )
         return empty_fig
         
@@ -173,7 +173,9 @@ def create_sunburst_chart(df: pd.DataFrame, title: str = "Taxonomic Element Dist
     fig.update_layout(
         margin=dict(t=50, l=10, r=10, b=10),
         height=700,
-        width=700,
+        # Remove fixed width to allow responsiveness
+        # width=700,
+        autosize=True,
         title={
             'text': title,
             'font': {
