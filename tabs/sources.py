@@ -2114,6 +2114,16 @@ def register_sources_tab_callbacks(app):
             tuple: (stats_html, updated_tabs)
         """
         logging.info(f"Sources tab callback triggered - n_clicks: {n_clicks}, tab_id: {tab_id}")
+        
+        # Return a simple test message first to see if callback works
+        if True:  # Temporary test
+            test_stats = html.Div("Sources callback is working!", style={"color": "green", "font-weight": "bold"})
+            test_tabs = [
+                dcc.Tab(label="Test Tab 1", children=html.Div("Test content 1")),
+                dcc.Tab(label="Test Tab 2", children=html.Div("Test content 2"))
+            ]
+            return test_stats, test_tabs
+        
         # Process filters regardless of whether button was clicked
         # This ensures data loads on initial page load
         date_range = None
@@ -2159,12 +2169,23 @@ def register_sources_tab_callbacks(app):
             logging.error(f"Error fetching data: {e}")
             return html.Div(f"Error loading data: {str(e)}"), []
         
-        # Get time series data
-        doc_time_series = fetch_time_series_data('document', lang_val, db_val, source_type, date_range)
-        chunk_time_series = fetch_time_series_data('chunk', lang_val, db_val, source_type, date_range)
-        taxonomy_time_series = fetch_time_series_data('taxonomy', lang_val, db_val, source_type, date_range)
-        keyword_time_series = fetch_time_series_data('keyword', lang_val, db_val, source_type, date_range)
-        entity_time_series = fetch_time_series_data('entity', lang_val, db_val, source_type, date_range)
+        # Get time series data with error handling
+        try:
+            logging.info("Fetching time series data")
+            doc_time_series = fetch_time_series_data('document', lang_val, db_val, source_type, date_range)
+            chunk_time_series = fetch_time_series_data('chunk', lang_val, db_val, source_type, date_range)
+            taxonomy_time_series = fetch_time_series_data('taxonomy', lang_val, db_val, source_type, date_range)
+            keyword_time_series = fetch_time_series_data('keyword', lang_val, db_val, source_type, date_range)
+            entity_time_series = fetch_time_series_data('entity', lang_val, db_val, source_type, date_range)
+            logging.info("Time series data fetched")
+        except Exception as e:
+            logging.error(f"Error fetching time series data: {e}")
+            # Use empty dataframes as fallback
+            doc_time_series = pd.DataFrame()
+            chunk_time_series = pd.DataFrame()
+            taxonomy_time_series = pd.DataFrame()
+            keyword_time_series = pd.DataFrame()
+            entity_time_series = pd.DataFrame()
         
         # Get language time series data
         doc_lang_time_series = fetch_language_time_series('document', lang_val, db_val, source_type, date_range)
