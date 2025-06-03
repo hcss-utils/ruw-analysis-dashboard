@@ -1783,39 +1783,8 @@ def create_sources_tab_layout(db_options: List, min_date: datetime = None, max_d
     Returns:
         html.Div: Sources tab layout
     """
-    # Fetch data for tabs
-    taxonomy_data = fetch_taxonomy_combinations()
-    chunks_data = fetch_chunks_data()
-    documents_data = fetch_documents_data()
-    keywords_data = fetch_keywords_data()
-    named_entities_data = fetch_named_entities_data()
-    
-    # Get time series data for each entity type
-    doc_time_series = fetch_time_series_data('document')
-    chunk_time_series = fetch_time_series_data('chunk')
-    taxonomy_time_series = fetch_time_series_data('taxonomy')
-    keyword_time_series = fetch_time_series_data('keyword')
-    entity_time_series = fetch_time_series_data('entity')
-    
-    # Get language time series data
-    doc_lang_time_series = fetch_language_time_series('document')
-    chunk_lang_time_series = fetch_language_time_series('chunk')
-    taxonomy_lang_time_series = fetch_language_time_series('taxonomy')
-    keyword_lang_time_series = fetch_language_time_series('keyword')
-    entity_lang_time_series = fetch_language_time_series('entity')
-    
-    # Get database time series data
-    doc_db_time_series = fetch_database_time_series('document')
-    chunk_db_time_series = fetch_database_time_series('chunk')
-    taxonomy_db_time_series = fetch_database_time_series('taxonomy')
-    keyword_db_time_series = fetch_database_time_series('keyword')
-    entity_db_time_series = fetch_database_time_series('entity')
-    
-    # Get database breakdown data
-    doc_db_breakdown = fetch_database_breakdown('document')
-    chunk_db_breakdown = fetch_database_breakdown('chunk')
-    keyword_db_breakdown = fetch_database_breakdown('keyword')
-    entity_db_breakdown = fetch_database_breakdown('entity')
+    # DON'T fetch data here! This defeats lazy loading!
+    # Data will be fetched in the callback when needed
     
     # Create corpus overview header
     corpus_overview = html.Div([
@@ -1857,7 +1826,7 @@ def create_sources_tab_layout(db_options: List, min_date: datetime = None, max_d
         ], className="text-muted mb-4", style={"border": "1px solid #ddd", "padding": "10px", "background": "#f9f9f9"})
     ])
     
-    # Create placeholder tabs with loading spinners
+    # Create placeholder content for lazy loading
     loading_content = html.Div([
         dcc.Loading(
             type="default",
@@ -1871,9 +1840,10 @@ def create_sources_tab_layout(db_options: List, min_date: datetime = None, max_d
         )
     ])
     
+    # Create initial placeholder tabs
     documents_subtab = loading_content
     chunks_subtab = loading_content
-    taxonomy_subtab = loading_content
+    taxonomy_subtab = loading_content  
     keywords_subtab = loading_content
     entities_subtab = loading_content
     
@@ -2025,93 +1995,30 @@ def register_sources_tab_callbacks(app):
         Returns:
             tuple: (stats_html, updated_tabs)
         """
-        # If the button wasn't clicked, use default data
+        # If the button wasn't clicked, return minimal data for lazy loading
         if not n_clicks:
+            # Only fetch corpus stats for the header
             corpus_stats = fetch_corpus_stats()
             stats_html = html.Div([
                 html.P(f"Docs: {corpus_stats['docs_count']:,} ({corpus_stats['docs_rel_count']:,} rel) | Chunks: {corpus_stats['chunks_count']:,} ({corpus_stats['chunks_rel_count']:,} rel) | Tax: {corpus_stats['tax_levels']:,} levels | Items: {corpus_stats['items_count']:,}")
             ])
             
-            # Default tabs with unfiltered data
-            taxonomy_data = fetch_taxonomy_combinations()
-            chunks_data = fetch_chunks_data()
-            documents_data = fetch_documents_data()
-            keywords_data = fetch_keywords_data()
-            named_entities_data = fetch_named_entities_data()
+            # Create placeholder content for tabs
+            loading_content = html.Div([
+                html.Div([
+                    html.H4("Click 'Apply Filters' to load data", className="text-center mb-3"),
+                    html.P("Data will be loaded when you apply filters. This improves initial page load time.", 
+                          className="text-center text-muted")
+                ], className="p-5")
+            ])
             
-            # Get time series data
-            doc_time_series = fetch_time_series_data('document')
-            chunk_time_series = fetch_time_series_data('chunk')
-            taxonomy_time_series = fetch_time_series_data('taxonomy')
-            keyword_time_series = fetch_time_series_data('keyword')
-            entity_time_series = fetch_time_series_data('entity')
-            
-            # Get language time series data
-            doc_lang_time_series = fetch_language_time_series('document')
-            chunk_lang_time_series = fetch_language_time_series('chunk')
-            taxonomy_lang_time_series = fetch_language_time_series('taxonomy')
-            keyword_lang_time_series = fetch_language_time_series('keyword')
-            entity_lang_time_series = fetch_language_time_series('entity')
-            
-            # Get database time series data
-            doc_db_time_series = fetch_database_time_series('document')
-            chunk_db_time_series = fetch_database_time_series('chunk')
-            taxonomy_db_time_series = fetch_database_time_series('taxonomy')
-            keyword_db_time_series = fetch_database_time_series('keyword')
-            entity_db_time_series = fetch_database_time_series('entity')
-            
-            # Get database breakdown data
-            doc_db_breakdown = fetch_database_breakdown('document')
-            chunk_db_breakdown = fetch_database_breakdown('chunk')
-            keyword_db_breakdown = fetch_database_breakdown('keyword')
-            entity_db_breakdown = fetch_database_breakdown('entity')
-            
-            # Create the tabs
-            documents_subtab = create_documents_tab(
-                documents_data, 
-                doc_time_series,
-                doc_lang_time_series,
-                doc_db_time_series,
-                doc_db_breakdown
-            )
-            
-            chunks_subtab = create_chunks_tab(
-                chunks_data,
-                chunk_time_series,
-                chunk_lang_time_series,
-                chunk_db_time_series,
-                chunk_db_breakdown
-            )
-            
-            taxonomy_subtab = create_taxonomy_combinations_tab(
-                taxonomy_data,
-                taxonomy_time_series,
-                taxonomy_lang_time_series,
-                taxonomy_db_time_series
-            )
-            
-            keywords_subtab = create_keywords_tab(
-                keywords_data,
-                keyword_time_series,
-                keyword_lang_time_series,
-                keyword_db_time_series,
-                keyword_db_breakdown
-            )
-            
-            entities_subtab = create_named_entities_tab(
-                named_entities_data,
-                entity_time_series,
-                entity_lang_time_series,
-                entity_db_time_series,
-                entity_db_breakdown
-            )
-            
+            # Return placeholder tabs
             updated_tabs = [
-                dcc.Tab(label="Documents", children=documents_subtab),
-                dcc.Tab(label="Chunks", children=chunks_subtab),
-                dcc.Tab(label="Taxonomy Combinations", children=taxonomy_subtab),
-                dcc.Tab(label="Keywords", children=keywords_subtab),
-                dcc.Tab(label="Named Entities", children=entities_subtab)
+                dcc.Tab(label="Documents", children=loading_content),
+                dcc.Tab(label="Chunks", children=loading_content),
+                dcc.Tab(label="Taxonomy Combinations", children=loading_content),
+                dcc.Tab(label="Keywords", children=loading_content),
+                dcc.Tab(label="Named Entities", children=loading_content)
             ]
             
             # Return with empty string for the loading spinner output
