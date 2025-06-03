@@ -366,7 +366,12 @@ def register_explore_callbacks(app):
             date_range = (start_date, end_date)
         
         # Fetch text chunks for the selected taxonomic element
-        chunks_df = fetch_text_chunks(level, selected, lang_val, db_val, source_type, date_range)
+        # First get the total count for pagination
+        from database.data_fetchers import fetch_text_chunks_count
+        total_count = fetch_text_chunks_count(level, selected, lang_val, db_val, source_type, date_range)
+        
+        # Then fetch only the first page of chunks
+        chunks_df = fetch_text_chunks(level, selected, lang_val, db_val, source_type, date_range, page=1, page_size=10)
         
         if chunks_df.empty:
             return [], None, {}, {'display': 'none'}, {'display': 'none'}, {'display': 'none'}, {'display': 'none'}, "No data available for this selection", {'display': 'block'}
@@ -378,11 +383,20 @@ def register_explore_callbacks(app):
         # Create timeline caption
         timeline_caption = html.Div([
             html.H5(f"Timeline Distribution for {level}: {selected}"),
-            html.P(f"Total chunks: {len(chunks_df)}, Time range: {timeline_df['month'].min().strftime('%Y-%m') if not timeline_df.empty else 'N/A'} to {timeline_df['month'].max().strftime('%Y-%m') if not timeline_df.empty else 'N/A'}")
+            html.P(f"Total chunks: {total_count:,}, Time range: {timeline_df['month'].min().strftime('%Y-%m') if not timeline_df.empty else 'N/A'} to {timeline_df['month'].max().strftime('%Y-%m') if not timeline_df.empty else 'N/A'}")
         ])
         
-        # Store current selection level and value
-        selection_data = {'level': level, 'value': selected}
+        # Store current selection level, value, and total count
+        selection_data = {
+            'level': level, 
+            'value': selected,
+            'total_count': total_count,
+            'lang_val': lang_val,
+            'db_val': db_val,
+            'source_type': source_type,
+            'start_date': start_date,
+            'end_date': end_date
+        }
         
         # Show all components
         show_style = {'display': 'block'}
@@ -468,6 +482,9 @@ def register_explore_callbacks(app):
         ctx = dash.callback_context
         triggered_id = ctx.triggered[0]['prop_id'].split('.')[0] if ctx.triggered else None
 
+        # Get total count from selection data
+        total_count = selection_data.get('total_count', len(full_df))
+        
         # If the data changed (new selection), reset page
         if triggered_id == 'filtered-chunks-store':
             current_page = 0
@@ -476,13 +493,27 @@ def register_explore_callbacks(app):
             if triggered_id in ['explore-prev-page-button', 'explore-prev-page-button-bottom']:
                 current_page = max(current_page - 1, 0)
             elif triggered_id in ['explore-next-page-button', 'explore-next-page-button-bottom']:
-                max_page = (len(full_df) - 1) // PAGE_SIZE
+                max_page = (total_count - 1) // PAGE_SIZE
                 current_page = min(current_page + 1, max_page)
         
-        # Get current page data
+        # Fetch the specific page of data from the database
+        lang_val = selection_data.get('lang_val')
+        db_val = selection_data.get('db_val')
+        source_type = selection_data.get('source_type')
+        start_date = selection_data.get('start_date')
+        end_date = selection_data.get('end_date')
+        date_range = (start_date, end_date) if start_date and end_date else None
+        
+        # Fetch only the current page of chunks
+        page_df = fetch_text_chunks(
+            level, selected, lang_val, db_val, source_type, date_range,
+            page=current_page + 1,  # Pages are 1-indexed in the database
+            page_size=PAGE_SIZE
+        )
+        
+        # Calculate indices for display
         start_idx = current_page * PAGE_SIZE
-        end_idx = min(start_idx + PAGE_SIZE, len(full_df))
-        page_df = full_df.iloc[start_idx:end_idx]
+        end_idx = min(start_idx + len(page_df), total_count)
         
         # Create title with more emphasis - use the consistent styling from the screenshot
         # This is where the Back to Text Chunks should go - at the top of the loaded chunks
@@ -490,8 +521,8 @@ def register_explore_callbacks(app):
         
         # Create stats with better formatting
         stats = html.Div([
-            html.P(f"Total chunks: {len(full_df)}", style={"font-weight": "bold"}),
-            html.P(f"Showing chunks {start_idx+1}-{end_idx} of {len(full_df)}")
+            html.P(f"Total chunks: {total_count:,}", style={"font-weight": "bold"}),
+            html.P(f"Showing chunks {start_idx+1}-{end_idx} of {total_count:,}")
         ])
         
         # Format chunks for display
@@ -505,7 +536,7 @@ def register_explore_callbacks(app):
                 chunk_rows.append(html.Div(f"Error displaying chunk {i}"))
         
         # Create pagination text
-        total_pages = (len(full_df) - 1) // PAGE_SIZE + 1
+        total_pages = (total_count - 1) // PAGE_SIZE + 1
         page_text = f"Page {current_page + 1} of {total_pages}"
         
         return title, stats, chunk_rows, page_text, page_text, current_page
