@@ -113,7 +113,9 @@ def create_explore_tab_layout(db_options: List, min_date: datetime = None, max_d
         html.Div([
             dcc.Loading(
                 id="loading-sunburst",
-                type="default",  # This will use the global spinner styling
+                type="circle",  # Use circle type for radar pulse effect
+                color="#13376f",
+                className="radar-loading",
                 children=[
                     html.Div(
                         dcc.Graph(
@@ -134,7 +136,9 @@ def create_explore_tab_layout(db_options: List, min_date: datetime = None, max_d
         html.Div(id='timeline-container', children=[
             dcc.Loading(
                 id="loading-timeline", 
-                type="default",
+                type="circle",  # Use circle type for radar pulse effect
+                color="#13376f",
+                className="radar-loading",
                 children=[dcc.Graph(id='timeline-chart', style={'margin-bottom': '10px'})]
             )
         ], style={'display': 'none'}),

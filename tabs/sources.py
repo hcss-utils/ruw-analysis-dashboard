@@ -1919,24 +1919,13 @@ def create_sources_tab_layout(db_options: List, min_date: datetime = None, max_d
             ),
         ], style={"display": "flex", "align-items": "center", "margin-bottom": "20px"}),
         
-        # Filter card with custom spinner
-        html.Div([
-            create_filter_card(
-                id_prefix="sources",
-                db_options=db_options,
-                min_date=min_date,
-                max_date=max_date
-            ),
-            # Add loading spinner that will show when filters are being applied
-            dcc.Loading(
-                id="sources-loading-spinner",
-                type="circle",  # Use circle type which we'll style with CSS
-                color="#13376f",
-                children=[html.Div(id="sources-loading-output")],
-                style={"position": "absolute", "top": "50%", "left": "50%", "transform": "translate(-50%, -50%)"},
-                className="radar-loading"
-            )
-        ], style={"position": "relative"}),
+        # Filter card
+        create_filter_card(
+            id_prefix="sources",
+            db_options=db_options,
+            min_date=min_date,
+            max_date=max_date
+        ),
         
         # Last updated info
         html.Div([
@@ -1948,7 +1937,9 @@ def create_sources_tab_layout(db_options: List, min_date: datetime = None, max_d
     # Create placeholder content for lazy loading
     loading_content = html.Div([
         dcc.Loading(
-            type="default",
+            type="circle",  # Use circle type for radar pulse effect
+            color="#13376f",
+            className="radar-loading",
             children=[
                 html.Div([
                     html.H4("Loading data...", className="text-center mb-3"),
@@ -1970,14 +1961,23 @@ def create_sources_tab_layout(db_options: List, min_date: datetime = None, max_d
     sources_tab = html.Div([
         corpus_overview,
         
-        # Subtabs
-        dcc.Tabs([
-            dcc.Tab(label="Documents", children=documents_subtab),
-            dcc.Tab(label="Chunks", children=chunks_subtab),
-            dcc.Tab(label="Taxonomy Combinations", children=taxonomy_subtab),
-            dcc.Tab(label="Keywords", children=keywords_subtab),
-            dcc.Tab(label="Named Entities", children=entities_subtab)
-        ], id="sources-subtabs", className="custom-tabs"),
+        # Wrap subtabs in loading component for radar pulse effect
+        dcc.Loading(
+            id="sources-main-loading",
+            type="circle",  # Use circle type for custom radar pulse
+            color="#13376f",
+            className="radar-loading",
+            children=[
+                # Subtabs
+                dcc.Tabs([
+                    dcc.Tab(label="Documents", children=documents_subtab),
+                    dcc.Tab(label="Chunks", children=chunks_subtab),
+                    dcc.Tab(label="Taxonomy Combinations", children=taxonomy_subtab),
+                    dcc.Tab(label="Keywords", children=keywords_subtab),
+                    dcc.Tab(label="Named Entities", children=entities_subtab)
+                ], id="sources-subtabs", className="custom-tabs"),
+            ]
+        ),
         
         # Sources-specific About modal
         dbc.Modal([
@@ -2079,12 +2079,11 @@ def register_sources_tab_callbacks(app):
             return not is_open
         return is_open
     
-# We'll remove this separate callback and instead incorporate the spinner into the main data loading callback
+    # Main callback for updating sources tab content
     @app.callback(
         [
             Output("sources-result-stats", "children"),
-            Output("sources-subtabs", "children"),
-            Output("sources-loading-output", "children")  # Add output for the spinner
+            Output("sources-subtabs", "children")
         ],
         [
             Input("sources-filter-button", "n_clicks")
@@ -2219,8 +2218,8 @@ def register_sources_tab_callbacks(app):
             dcc.Tab(label="Named Entities", children=entities_subtab)
         ]
         
-        # Return with empty string for the loading spinner output
-        return stats_html, updated_tabs, ""
+        # Return updated content
+        return stats_html, updated_tabs
     
     # Callback to toggle the Documents About modal
     @app.callback(
