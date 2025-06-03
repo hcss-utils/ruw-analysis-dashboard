@@ -474,13 +474,92 @@ def fetch_category_data(
 
 
 @cached(timeout=300)
-def fetch_text_chunks(
+def fetch_text_chunks_count(
     level: str,
     value: str,
     selected_lang: Optional[str] = None,
     selected_db: Optional[str] = None,
     source_type: Optional[str] = None,
     date_range: Optional[Tuple[str, str]] = None
+) -> int:
+    """
+    Get the total count of text chunks for pagination.
+    
+    Args:
+        level: Taxonomy level (category, subcategory, sub_subcategory)
+        value: Selected value for the level
+        selected_lang: Language filter
+        selected_db: Database filter
+        source_type: Source type filter
+        date_range: Date range filter
+        
+    Returns:
+        int: Total count of matching chunks
+    """
+    # Whitelist approach to avoid injection
+    allowed_levels = ['category', 'subcategory', 'sub_subcategory']
+    if level not in allowed_levels:
+        return 0
+    
+    if is_demo_mode():
+        return 50  # Return a fixed count for demo mode
+    
+    if selected_lang == 'ALL':
+        selected_lang = None
+    if selected_db == 'ALL':
+        selected_db = None
+    
+    # Build count query
+    query_parts = [f"""
+    SELECT COUNT(*) as count
+    FROM taxonomy t
+    JOIN document_section_chunk dsc ON t.chunk_id = dsc.id
+    JOIN document_section ds ON dsc.document_section_id = ds.id
+    JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+    WHERE t.{level} = :value
+    """]
+    
+    params = {'value': value}
+    
+    if selected_lang is not None:
+        query_parts.append("AND ud.language = :lang")
+        params['lang'] = selected_lang
+        
+    if selected_db is not None:
+        query_parts.append("AND ud.database = :db")
+        params['db'] = selected_db
+
+    # Add source type filter
+    source_type_condition = _build_source_type_condition(source_type)
+    if source_type_condition:
+        query_parts.append(source_type_condition)
+    
+    if date_range and len(date_range) == 2 and date_range[0] and date_range[1]:
+        query_parts.append("AND ud.date BETWEEN :start_date AND :end_date")
+        params['start_date'] = date_range[0]
+        params['end_date'] = date_range[1]
+    
+    query = " ".join(query_parts)
+
+    try:
+        engine = get_engine()
+        result = pd.read_sql(text(query), engine, params=params)
+        return int(result['count'].iloc[0])
+    except Exception as e:
+        logging.error(f"Error fetching text chunks count: {e}")
+        return 0
+
+
+@cached(timeout=300)
+def fetch_text_chunks(
+    level: str,
+    value: str,
+    selected_lang: Optional[str] = None,
+    selected_db: Optional[str] = None,
+    source_type: Optional[str] = None,
+    date_range: Optional[Tuple[str, str]] = None,
+    page: int = 1,
+    page_size: int = 10
 ) -> pd.DataFrame:
     """
     Fetch all relevant text chunks for a specific category level with optional filters.
@@ -581,6 +660,10 @@ def fetch_text_chunks(
         params['end_date'] = date_range[1]
     
     query_parts.append("ORDER BY ud.date DESC")
+    
+    # Add pagination
+    offset = (page - 1) * page_size
+    query_parts.append(f"LIMIT {page_size} OFFSET {offset}")
     
     query = " ".join(query_parts)
 

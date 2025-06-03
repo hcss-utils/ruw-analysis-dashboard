@@ -183,6 +183,7 @@ def create_dash_app() -> dash.Dash:
             <title>{%title%}</title>
             {%favicon%}
             {%css%}
+            <link rel="stylesheet" href="/static/custom.css?v=2">
             <!-- Preload critical scripts to prevent loading errors -->
             <link rel="preload" href="/_dash-component-suites/dash/dcc/async-slider.js" as="script">
             <link rel="preload" href="/_dash-component-suites/dash/dcc/async-graph.js" as="script">
@@ -234,18 +235,7 @@ def create_dash_app() -> dash.Dash:
                     width: 100%;
                 }
                 
-                /* Make loading spinner more visible and center it */
-                ._dash-loading {
-                    position: fixed !important;
-                    top: 50% !important;
-                    left: 50% !important;
-                    transform: translate(-50%, -50%) !important;
-                    width: 80px !important;
-                    height: 80px !important;
-                    border: 8px solid #f3f3f3 !important;
-                    border-top: 8px solid ''' + THEME_BLUE + ''' !important;
-                    z-index: 9999 !important;
-                }
+                /* Loading spinner styles moved to custom.css for radar pulse effect */
                 
                 /* Dashboard container for responsive layout */
                 .dashboard-container {
