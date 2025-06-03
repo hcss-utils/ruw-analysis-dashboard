@@ -815,6 +815,7 @@ def fetch_time_series_data(
                     FROM document_section_chunk dsc
                     JOIN document_section ds ON dsc.document_section_id = ds.id
                     JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                    INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                     WHERE ud.date IS NOT NULL AND dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0
                     {filter_sql}
                 )
@@ -834,6 +835,7 @@ def fetch_time_series_data(
                     FROM document_section_chunk dsc
                     JOIN document_section ds ON dsc.document_section_id = ds.id
                     JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                    INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                     WHERE ud.date IS NOT NULL 
                         AND dsc.named_entities IS NOT NULL 
                         AND jsonb_typeof(dsc.named_entities) = 'array'
@@ -962,6 +964,7 @@ def fetch_language_time_series(
                     FROM document_section_chunk dsc
                     JOIN document_section ds ON dsc.document_section_id = ds.id
                     JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                    INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                     WHERE ud.date IS NOT NULL AND ud.language IS NOT NULL
                         AND dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0
                     {filter_sql}
@@ -983,6 +986,7 @@ def fetch_language_time_series(
                     FROM document_section_chunk dsc
                     JOIN document_section ds ON dsc.document_section_id = ds.id
                     JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                    INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                     WHERE ud.date IS NOT NULL AND ud.language IS NOT NULL
                         AND dsc.named_entities IS NOT NULL 
                         AND jsonb_typeof(dsc.named_entities) = 'array'
@@ -1061,6 +1065,7 @@ def fetch_language_time_series(
                     FROM document_section_chunk dsc
                     JOIN document_section ds ON dsc.document_section_id = ds.id
                     JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                    INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                     WHERE ud.date IS NOT NULL AND ud.language IN :languages
                         AND dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0
                     {filter_sql}
@@ -1083,6 +1088,7 @@ def fetch_language_time_series(
                     FROM document_section_chunk dsc
                     JOIN document_section ds ON dsc.document_section_id = ds.id
                     JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                    INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                     WHERE ud.date IS NOT NULL AND ud.language IN :languages
                         AND dsc.named_entities IS NOT NULL 
                         AND jsonb_typeof(dsc.named_entities) = 'array'
@@ -1212,6 +1218,7 @@ def fetch_database_time_series(
                     FROM document_section_chunk dsc
                     JOIN document_section ds ON dsc.document_section_id = ds.id
                     JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                    INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                     WHERE ud.date IS NOT NULL AND ud.database IS NOT NULL
                         AND dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0
                     {filter_sql}
@@ -1233,6 +1240,7 @@ def fetch_database_time_series(
                     FROM document_section_chunk dsc
                     JOIN document_section ds ON dsc.document_section_id = ds.id
                     JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                    INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                     WHERE ud.date IS NOT NULL AND ud.database IS NOT NULL
                         AND dsc.named_entities IS NOT NULL 
                         AND jsonb_typeof(dsc.named_entities) = 'array'
@@ -1311,6 +1319,7 @@ def fetch_database_time_series(
                     FROM document_section_chunk dsc
                     JOIN document_section ds ON dsc.document_section_id = ds.id
                     JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                    INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                     WHERE ud.date IS NOT NULL AND ud.database IN :databases
                         AND dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0
                     {filter_sql}
@@ -1333,6 +1342,7 @@ def fetch_database_time_series(
                     FROM document_section_chunk dsc
                     JOIN document_section ds ON dsc.document_section_id = ds.id
                     JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                    INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                     WHERE ud.date IS NOT NULL AND ud.database IN :databases
                         AND dsc.named_entities IS NOT NULL 
                         AND jsonb_typeof(dsc.named_entities) = 'array'
@@ -1423,7 +1433,7 @@ def fetch_keywords_data(
             params = base_filters['params']
             filter_sql = base_filters['filter_sql']
             
-            # Get total unique keywords and chunk statistics
+            # Get total unique keywords and chunk statistics - ONLY from relevant chunks
             stats_query = f"""
             WITH keyword_data AS (
                 SELECT 
@@ -1432,6 +1442,7 @@ def fetch_keywords_data(
                 FROM document_section_chunk dsc
                 JOIN document_section ds ON dsc.document_section_id = ds.id
                 JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                 WHERE dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0
                 {filter_sql}
             )
@@ -1444,7 +1455,7 @@ def fetch_keywords_data(
             
             stats_df = pd.read_sql(text(stats_query), conn, params=params)
             
-            # Get top keywords by frequency
+            # Get top keywords by frequency - ONLY from relevant chunks
             top_keywords_query = f"""
             WITH keyword_data AS (
                 SELECT 
@@ -1452,6 +1463,7 @@ def fetch_keywords_data(
                 FROM document_section_chunk dsc
                 JOIN document_section ds ON dsc.document_section_id = ds.id
                 JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                 WHERE dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0
                 {filter_sql}
             )
@@ -1466,7 +1478,7 @@ def fetch_keywords_data(
             
             top_keywords_df = pd.read_sql(text(top_keywords_query), conn, params=params)
             
-            # Get keywords per chunk distribution
+            # Get keywords per chunk distribution - ONLY from relevant chunks
             keywords_per_chunk_query = f"""
             WITH chunk_keyword_counts AS (
                 SELECT 
@@ -1475,6 +1487,7 @@ def fetch_keywords_data(
                 FROM document_section_chunk dsc
                 JOIN document_section ds ON dsc.document_section_id = ds.id
                 JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                 WHERE 1=1
                 {filter_sql}
             )
@@ -1503,7 +1516,7 @@ def fetch_keywords_data(
             
             dist_df = pd.read_sql(text(keywords_per_chunk_query), conn, params=params)
             
-            # Get language distribution of keywords
+            # Get language distribution of keywords - ONLY from relevant chunks
             lang_dist_query = f"""
             WITH keyword_lang_data AS (
                 SELECT 
@@ -1512,6 +1525,7 @@ def fetch_keywords_data(
                 FROM document_section_chunk dsc
                 JOIN document_section ds ON dsc.document_section_id = ds.id
                 JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                 WHERE dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0
                 {filter_sql}
             )
@@ -1526,7 +1540,7 @@ def fetch_keywords_data(
             
             lang_df = pd.read_sql(text(lang_dist_query), conn, params=params)
             
-            # Get database distribution of keywords
+            # Get database distribution of keywords - ONLY from relevant chunks
             db_dist_query = f"""
             WITH keyword_db_data AS (
                 SELECT 
@@ -1535,6 +1549,7 @@ def fetch_keywords_data(
                 FROM document_section_chunk dsc
                 JOIN document_section ds ON dsc.document_section_id = ds.id
                 JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                 WHERE dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0
                 {filter_sql}
             )
@@ -1550,12 +1565,13 @@ def fetch_keywords_data(
             
             db_df = pd.read_sql(text(db_dist_query), conn, params=params)
             
-            # Get total chunks for coverage calculation
+            # Get total RELEVANT chunks for coverage calculation
             total_chunks_query = f"""
             SELECT COUNT(DISTINCT dsc.id) as total_chunks
             FROM document_section_chunk dsc
             JOIN document_section ds ON dsc.document_section_id = ds.id
             JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+            INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
             WHERE 1=1
             {filter_sql}
             """
@@ -1705,7 +1721,7 @@ def fetch_named_entities_data(
             params = base_filters['params']
             filter_sql = base_filters['filter_sql']
             
-            # Get total unique entities and chunk statistics
+            # Get total unique entities and chunk statistics - ONLY from relevant chunks
             # Named entities are stored as JSONB array directly: [{"text": "...", "label": "..."}]
             stats_query = f"""
             WITH entity_data AS (
@@ -1715,6 +1731,7 @@ def fetch_named_entities_data(
                 FROM document_section_chunk dsc
                 JOIN document_section ds ON dsc.document_section_id = ds.id
                 JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                 WHERE dsc.named_entities IS NOT NULL 
                     AND jsonb_typeof(dsc.named_entities) = 'array'
                     AND jsonb_array_length(dsc.named_entities) > 0
@@ -1730,7 +1747,7 @@ def fetch_named_entities_data(
             
             stats_df = pd.read_sql(text(stats_query), conn, params=params)
             
-            # Get top entities by frequency
+            # Get top entities by frequency - ONLY from relevant chunks
             top_entities_query = f"""
             WITH entity_data AS (
                 SELECT 
@@ -1738,6 +1755,7 @@ def fetch_named_entities_data(
                 FROM document_section_chunk dsc
                 JOIN document_section ds ON dsc.document_section_id = ds.id
                 JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                 WHERE dsc.named_entities IS NOT NULL 
                     AND jsonb_typeof(dsc.named_entities) = 'array'
                     AND jsonb_array_length(dsc.named_entities) > 0
@@ -1755,7 +1773,7 @@ def fetch_named_entities_data(
             
             top_entities_df = pd.read_sql(text(top_entities_query), conn, params=params)
             
-            # Get entity types distribution
+            # Get entity types distribution - ONLY from relevant chunks
             entity_types_query = f"""
             WITH entity_data AS (
                 SELECT 
@@ -1763,6 +1781,7 @@ def fetch_named_entities_data(
                 FROM document_section_chunk dsc
                 JOIN document_section ds ON dsc.document_section_id = ds.id
                 JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                 WHERE dsc.named_entities IS NOT NULL 
                     AND jsonb_typeof(dsc.named_entities) = 'array'
                     AND jsonb_array_length(dsc.named_entities) > 0
@@ -1779,7 +1798,7 @@ def fetch_named_entities_data(
             
             entity_types_df = pd.read_sql(text(entity_types_query), conn, params=params)
             
-            # Get entities per chunk distribution
+            # Get entities per chunk distribution - ONLY from relevant chunks
             entities_per_chunk_query = f"""
             WITH chunk_entity_counts AS (
                 SELECT 
@@ -1792,6 +1811,7 @@ def fetch_named_entities_data(
                 FROM document_section_chunk dsc
                 JOIN document_section ds ON dsc.document_section_id = ds.id
                 JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                 WHERE 1=1
                 {filter_sql}
             )
@@ -1820,7 +1840,7 @@ def fetch_named_entities_data(
             
             dist_df = pd.read_sql(text(entities_per_chunk_query), conn, params=params)
             
-            # Get language distribution of entities
+            # Get language distribution of entities - ONLY from relevant chunks
             lang_dist_query = f"""
             WITH entity_lang_data AS (
                 SELECT 
@@ -1829,6 +1849,7 @@ def fetch_named_entities_data(
                 FROM document_section_chunk dsc
                 JOIN document_section ds ON dsc.document_section_id = ds.id
                 JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                 WHERE dsc.named_entities IS NOT NULL 
                     AND jsonb_typeof(dsc.named_entities) = 'array'
                     AND jsonb_array_length(dsc.named_entities) > 0
@@ -1845,7 +1866,7 @@ def fetch_named_entities_data(
             
             lang_df = pd.read_sql(text(lang_dist_query), conn, params=params)
             
-            # Get database distribution of entities
+            # Get database distribution of entities - ONLY from relevant chunks
             db_dist_query = f"""
             WITH entity_db_data AS (
                 SELECT 
@@ -1854,6 +1875,7 @@ def fetch_named_entities_data(
                 FROM document_section_chunk dsc
                 JOIN document_section ds ON dsc.document_section_id = ds.id
                 JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                 WHERE dsc.named_entities IS NOT NULL 
                     AND jsonb_typeof(dsc.named_entities) = 'array'
                     AND jsonb_array_length(dsc.named_entities) > 0
@@ -1871,12 +1893,13 @@ def fetch_named_entities_data(
             
             db_df = pd.read_sql(text(db_dist_query), conn, params=params)
             
-            # Get total chunks for coverage calculation
+            # Get total RELEVANT chunks for coverage calculation
             total_chunks_query = f"""
             SELECT COUNT(DISTINCT dsc.id) as total_chunks
             FROM document_section_chunk dsc
             JOIN document_section ds ON dsc.document_section_id = ds.id
             JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+            INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
             WHERE 1=1
             {filter_sql}
             """

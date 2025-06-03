@@ -1425,18 +1425,19 @@ def create_keywords_tab(
         [
             html.P([
                 "Keywords are automatically extracted terms that represent key concepts in the text. "
-                "NOTE: Keywords are extracted from ALL chunks in the corpus, not just those with taxonomic "
-                "classifications. This provides a comprehensive view of all content themes."
+                "NOTE: Keywords are extracted from RELEVANT chunks only (those with taxonomic "
+                "classifications). This ensures focus on war-related content."
             ]),
             html.Ul([
-                html.Li("Unique Keywords: Distinct terms found across all chunks"),
-                html.Li("Total Occurrences: Sum of all keyword appearances"),
-                html.Li("Coverage: Percentage of ALL chunks containing keywords"),
-                html.Li("Top keywords show the most frequent concepts in the corpus")
+                html.Li("Unique Keywords: Distinct terms found in relevant chunks only"),
+                html.Li("Total Occurrences: Sum of all keyword appearances in relevant chunks"),
+                html.Li("Coverage: Percentage of RELEVANT chunks containing keywords"),
+                html.Li("Top keywords show the most frequent concepts in war-related content")
             ]),
             html.P([
                 html.Strong("Important: "),
-                "Keyword statistics include both relevant and irrelevant chunks to provide complete corpus coverage."
+                "Keyword statistics include only relevant chunks (those with taxonomic classifications) "
+                "to focus on war-related content."
             ], className="text-info")
         ]
     )
@@ -1819,19 +1820,19 @@ def create_named_entities_tab(
         [
             html.P([
                 "Named entities are automatically identified people, places, organizations, and other proper nouns "
-                "in the text. NOTE: Like keywords, named entities are extracted from ALL chunks in the corpus, "
-                "not just those with taxonomic classifications."
+                "in the text. NOTE: Like keywords, named entities are extracted from RELEVANT chunks only "
+                "(those with taxonomic classifications)."
             ]),
             html.Ul([
                 html.Li("Entity Types: Categories like PERSON, ORG, GPE (geopolitical entities), LOC, etc."),
                 html.Li("Filter by Type: Use the dropdown above to focus on specific entity types"),
-                html.Li("Coverage: Percentage of ALL chunks containing named entities"),
-                html.Li("Top entities show the most mentioned people, places, and organizations")
+                html.Li("Coverage: Percentage of RELEVANT chunks containing named entities"),
+                html.Li("Top entities show the most mentioned people, places, and organizations in war-related content")
             ]),
             html.P([
                 html.Strong("Important: "),
-                "Entity statistics include both relevant and irrelevant chunks. Use the entity type filter "
-                "to explore specific categories of entities."
+                "Entity statistics include only relevant chunks (those with taxonomic classifications). "
+                "Use the entity type filter to explore specific categories of entities."
             ], className="text-info")
         ]
     )
@@ -2280,3 +2281,158 @@ def register_sources_tab_callbacks(app):
         if n1 or n2:
             return not is_open
         return is_open
+    
+    # Helper function to filter entities by type
+    def filter_entities_by_type(entities_data, entity_type):
+        """
+        Filter named entities data to only include a specific entity type.
+        """
+        filtered_data = entities_data.copy()
+        
+        # Filter top entities to only include the selected type
+        if 'top_entities' in filtered_data and 'types' in filtered_data['top_entities']:
+            filtered_labels = []
+            filtered_values = []
+            filtered_types = []
+            
+            for i, etype in enumerate(filtered_data['top_entities']['types']):
+                if etype == entity_type:
+                    filtered_labels.append(filtered_data['top_entities']['labels'][i])
+                    filtered_values.append(filtered_data['top_entities']['values'][i])
+                    filtered_types.append(etype)
+            
+            filtered_data['top_entities']['labels'] = filtered_labels
+            filtered_data['top_entities']['values'] = filtered_values
+            filtered_data['top_entities']['types'] = filtered_types
+        
+        # Update entity type distribution to highlight selected type
+        if 'entity_types' in filtered_data:
+            # Find the selected entity type in the list
+            type_index = -1
+            for i, label in enumerate(filtered_data['entity_types']['labels']):
+                if label == entity_type:
+                    type_index = i
+                    break
+            
+            if type_index >= 0:
+                # Update stats to reflect only the selected type
+                filtered_data['total_unique_entities'] = filtered_data['entity_types']['unique_entities'][type_index]
+                filtered_data['total_entity_occurrences'] = filtered_data['entity_types']['counts'][type_index]
+        
+        return filtered_data
+    
+    # Callback to handle entity type filter
+    @app.callback(
+        Output("sources-subtabs", "children", allow_duplicate=True),
+        [Input("entity-type-filter", "value")],
+        [
+            State("sources-language-dropdown", "value"),
+            State("sources-database-dropdown", "value"),
+            State("sources-source-type-dropdown", "value"),
+            State("sources-date-range-picker", "start_date"),
+            State("sources-date-range-picker", "end_date")
+        ],
+        prevent_initial_call=True
+    )
+    def filter_by_entity_type(entity_type, lang_val, db_val, source_type, start_date, end_date):
+        """
+        Filter named entities visualizations by entity type.
+        """
+        if not entity_type:
+            return dash.no_update
+        
+        # Apply filters
+        date_range = None
+        if start_date and end_date:
+            date_range = (start_date, end_date)
+        
+        # Fetch filtered data
+        documents_data = fetch_documents_data(lang_val, db_val, source_type, date_range)
+        chunks_data = fetch_chunks_data(lang_val, db_val, source_type, date_range)
+        taxonomy_data = fetch_taxonomy_combinations_data(lang_val, db_val, source_type, date_range)
+        keywords_data = fetch_keywords_data(lang_val, db_val, source_type, date_range)
+        named_entities_data = fetch_named_entities_data(lang_val, db_val, source_type, date_range)
+        
+        # Fetch time series data
+        doc_time_series = fetch_sources_time_series(lang_val, db_val, source_type, date_range, 'document')
+        chunk_time_series = fetch_sources_time_series(lang_val, db_val, source_type, date_range, 'chunk')
+        tax_time_series = fetch_sources_time_series(lang_val, db_val, source_type, date_range, 'taxonomy')
+        keyword_time_series = fetch_sources_time_series(lang_val, db_val, source_type, date_range, 'keyword')
+        entity_time_series = fetch_sources_time_series(lang_val, db_val, source_type, date_range, 'entity')
+        
+        # Fetch language time series
+        doc_lang_time_series = fetch_language_time_series(lang_val, db_val, source_type, date_range, 'document')
+        chunk_lang_time_series = fetch_language_time_series(lang_val, db_val, source_type, date_range, 'chunk')
+        tax_lang_time_series = fetch_language_time_series(lang_val, db_val, source_type, date_range, 'taxonomy')
+        keyword_lang_time_series = fetch_language_time_series(lang_val, db_val, source_type, date_range, 'keyword')
+        entity_lang_time_series = fetch_language_time_series(lang_val, db_val, source_type, date_range, 'entity')
+        
+        # Fetch database time series
+        doc_db_time_series = fetch_database_time_series(lang_val, db_val, source_type, date_range, 'document')
+        chunk_db_time_series = fetch_database_time_series(lang_val, db_val, source_type, date_range, 'chunk')
+        tax_db_time_series = fetch_database_time_series(lang_val, db_val, source_type, date_range, 'taxonomy')
+        keyword_db_time_series = fetch_database_time_series(lang_val, db_val, source_type, date_range, 'keyword')
+        entity_db_time_series = fetch_database_time_series(lang_val, db_val, source_type, date_range, 'entity')
+        
+        # Fetch database breakdown data
+        doc_db_breakdown = fetch_database_breakdown(lang_val, db_val, source_type, date_range, 'document')
+        chunk_db_breakdown = fetch_database_breakdown(lang_val, db_val, source_type, date_range, 'chunk')
+        keyword_db_breakdown = fetch_database_breakdown(lang_val, db_val, source_type, date_range, 'keyword')
+        entity_db_breakdown = fetch_database_breakdown(lang_val, db_val, source_type, date_range, 'entity')
+        
+        # Filter named entities data by entity type if not "ALL"
+        if entity_type != 'ALL':
+            # Create a modified version of named_entities_data that only includes the selected entity type
+            filtered_entities_data = filter_entities_by_type(named_entities_data, entity_type)
+        else:
+            filtered_entities_data = named_entities_data
+        
+        # Create subtabs with filtered data
+        documents_subtab = create_documents_tab(
+            documents_data,
+            doc_time_series,
+            doc_lang_time_series,
+            doc_db_time_series,
+            doc_db_breakdown
+        )
+        
+        chunks_subtab = create_chunks_tab(
+            chunks_data,
+            chunk_time_series,
+            chunk_lang_time_series,
+            chunk_db_time_series,
+            chunk_db_breakdown
+        )
+        
+        taxonomy_subtab = create_taxonomy_combinations_tab(
+            taxonomy_data,
+            tax_time_series,
+            tax_lang_time_series,
+            tax_db_time_series
+        )
+        
+        keywords_subtab = create_keywords_tab(
+            keywords_data,
+            keyword_time_series,
+            keyword_lang_time_series,
+            keyword_db_time_series,
+            keyword_db_breakdown
+        )
+        
+        entities_subtab = create_named_entities_tab(
+            filtered_entities_data,
+            entity_time_series,
+            entity_lang_time_series,
+            entity_db_time_series,
+            entity_db_breakdown
+        )
+        
+        updated_tabs = [
+            dcc.Tab(label="Documents", children=documents_subtab),
+            dcc.Tab(label="Chunks", children=chunks_subtab),
+            dcc.Tab(label="Taxonomy Combinations", children=taxonomy_subtab),
+            dcc.Tab(label="Keywords", children=keywords_subtab),
+            dcc.Tab(label="Named Entities", children=entities_subtab)
+        ]
+        
+        return updated_tabs
