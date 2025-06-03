@@ -113,26 +113,6 @@ def format_chunk_row(row: Dict[str, Any]) -> html.Div:
             if sequence_number is not None:
                 position_info += f" in Section {sequence_number}"
         
-        # First line of metadata
-        metadata_line1 = html.P([
-            html.B("Document: "), f"{document_id} | ",
-            html.B("Database: "), f"{row.get('database', 'N/A')} | ",
-            html.B("Language: "), lang_display, " | ",
-            html.B("Date: "), f"{row.get('date', 'N/A')}"
-        ], style={'margin-bottom': '3px'})
-        
-        # Second line of metadata
-        heading = row.get('heading_title', 'N/A')
-        author = row.get('author', 'N/A') if row.get('author') else 'Unknown'
-        full_text = "✓ Full text" if row.get('is_full_text_present') else "⚠ Partial text"
-        
-        metadata_line2 = html.P([
-            html.B("Section: "), f"{heading} ", 
-            f"({position_info})" if position_info else "", " | ",
-            html.B("Author: "), f"{author} | ",
-            html.Span(full_text, style={'color': 'green' if row.get('is_full_text_present') else 'orange'})
-        ], style={'margin-bottom': '3px'})
-        
         # Extract and format keywords (show top 5)
         keywords = row.get('keywords', [])
         if keywords and isinstance(keywords, list):
@@ -163,11 +143,6 @@ def format_chunk_row(row: Dict[str, Any]) -> html.Div:
         
         entity_text = ", ".join(entity_summary) if entity_summary else "None"
         
-        # Third line with keywords and entities
-        metadata_line3 = html.P([
-            html.B("Keywords: "), html.Span(keyword_text, style={'color': '#666', 'font-style': 'italic'}), " | ",
-            html.B("Entities: "), html.Span(entity_text, style={'color': '#666', 'font-style': 'italic'})
-        ], style={'margin-bottom': '5px'})
         
         # Citation header with card-style design
         author = row.get('author', 'Unknown') if row.get('author') else 'Unknown'
@@ -180,11 +155,11 @@ def format_chunk_row(row: Dict[str, Any]) -> html.Div:
             document_id = f"{document_id:,}"
         full_text_status = "✓ Full" if row.get('is_full_text_present') else "⚠ Partial"
         
-        # Build compact citation with keywords and entities inline
+        # Build compact citation with proper ordering and include position info
         citation_parts = [
             html.Span([html.Strong("Author: "), author], style={'margin-right': '10px'}),
-            html.Span([html.Strong("Section: "), section], style={'margin-right': '10px'}),
             html.Span([html.Strong("Source: "), source], style={'margin-right': '10px'}),
+            html.Span([html.Strong("Section: "), section + (f" ({position_info})" if position_info else "")], style={'margin-right': '10px'}),
             html.Span([html.Strong("Date: "), date], style={'margin-right': '10px'}),
             html.Span([html.Strong("Database: "), database], style={'margin-right': '10px'}),
             html.Span([html.Strong("Language: "), lang_display], style={'margin-right': '10px'}),
@@ -196,7 +171,7 @@ def format_chunk_row(row: Dict[str, Any]) -> html.Div:
         
         citation = html.Div([
             html.Div(citation_parts, style={
-                'font-size': '13px',
+                'font-size': '16px',  # Match content font size
                 'color': '#333',
                 'line-height': '1.4'
             })
@@ -213,7 +188,7 @@ def format_chunk_row(row: Dict[str, Any]) -> html.Div:
         # No separate metadata section needed since keywords/entities are in citation
 
         chunk_text = html.Div([
-            html.P(row.get('chunk_text', 'No text available'))
+            html.P(row.get('chunk_text', 'No text available'), style={'font-size': '16px', 'margin': '0'})
         ], style={'padding': '10px', 'border': '1px solid lightgray',
                   'margin-bottom': '10px', 'width': '100%'})
 
@@ -229,25 +204,25 @@ def format_chunk_row(row: Dict[str, Any]) -> html.Div:
                 match = re.match(r'(\d+\.)(.*?):(.*)', section, re.DOTALL)
                 if match:
                     number, bold_content, rest_content = match.groups()
-                    formatted_reasoning.append(html.P(f"{number} {bold_content}:"))
+                    formatted_reasoning.append(html.P(f"{number} {bold_content}:", style={'font-size': '16px', 'margin': '0 0 5px 0'}))
                     rest_content = rest_content.strip()
                     if rest_content:
                         bullet_items = [
-                            html.P("• " + item.strip())
+                            html.P("• " + item.strip(), style={'font-size': '16px', 'margin': '0 0 3px 20px'})
                             for item in re.split(r'(?<!\d\.)\\s*-\\s*', rest_content)
                             if item.strip()
                         ]
                         formatted_reasoning.extend(bullet_items)
                 else:
-                    formatted_reasoning.append(html.P(section))
+                    formatted_reasoning.append(html.P(section, style={'font-size': '16px', 'margin': '0 0 5px 0'}))
                     
         chunk_reasoning = html.Div(
-            formatted_reasoning or [html.P("No reasoning available")],
+            formatted_reasoning or [html.P("No reasoning available", style={'font-size': '16px', 'margin': '0'})],
             style={'padding': '10px', 'border': '1px solid lightgray',
                    'margin-bottom': '10px', 'width': '100%'}
         )
 
-        # Layout with compact citation header at top
+        # Layout with compact citation header at top (no old metadata lines)
         row_layout = html.Div([
             # Citation header with all metadata including keywords and entities
             citation,
