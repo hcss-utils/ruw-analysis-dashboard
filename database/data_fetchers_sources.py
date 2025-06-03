@@ -1715,7 +1715,9 @@ def fetch_named_entities_data(
     
     try:
         engine = get_engine()
+        logging.info("Database engine obtained")
         with engine.connect() as conn:
+            logging.info("Database connection established")
             # Base query parts for filtering
             base_filters = _build_base_filters(lang_val, db_val, source_type, date_range)
             params = base_filters['params']
@@ -1731,7 +1733,7 @@ def fetch_named_entities_data(
                 FROM document_section_chunk dsc
                 JOIN document_section ds ON dsc.document_section_id = ds.id
                 JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
-                INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
+                -- TEMPORARILY DISABLED: INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                 WHERE dsc.named_entities IS NOT NULL 
                     AND jsonb_typeof(dsc.named_entities) = 'array'
                     AND jsonb_array_length(dsc.named_entities) > 0
