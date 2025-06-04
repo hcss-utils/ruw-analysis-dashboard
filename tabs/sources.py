@@ -1934,31 +1934,6 @@ def create_sources_tab_layout(db_options: List, min_date: datetime = None, max_d
         ], className="text-muted mb-4", style={"border": "1px solid #ddd", "padding": "10px", "background": "#f9f9f9"})
     ])
     
-    # Create placeholder content for lazy loading with humor
-    loading_content = dcc.Loading(
-        id="sources-loading",
-        type="default",  # This will use Dash's default loading animation which triggers the radar sweep
-        children=[
-            html.Div([
-                html.P("Preparing data visualizations... 🎉", 
-                       className="text-center mt-3", 
-                       style={'color': '#666', 'font-weight': 'bold'}),
-                html.P("(Our algorithms are doing their best impression of a speed reader!)", 
-                       className="text-muted text-center small"),
-                html.P("Did you know? The complete corpus contains more words than the entire Harry Potter series × 100! ⚡", 
-                       className="text-info text-center small mt-3",
-                       style={'font-style': 'italic'})
-            ], style={'padding': '40px', 'min-height': '200px'})
-        ]
-    )
-    
-    # Create initial placeholder tabs
-    documents_subtab = loading_content
-    chunks_subtab = loading_content
-    taxonomy_subtab = loading_content  
-    keywords_subtab = loading_content
-    entities_subtab = loading_content
-    
     # Create the sources tab with subtabs
     sources_tab = html.Div([
         corpus_overview,
@@ -1966,17 +1941,32 @@ def create_sources_tab_layout(db_options: List, min_date: datetime = None, max_d
         # Add stats container
         html.Div(id="sources-result-stats", className="mb-3"),
         
-        # Add a container div that can show loading state
-        html.Div([
-            # Subtabs
-            dcc.Tabs([
-                dcc.Tab(label="Documents", children=documents_subtab),
-                dcc.Tab(label="Chunks", children=chunks_subtab),
-                dcc.Tab(label="Taxonomy Combinations", children=taxonomy_subtab),
-                dcc.Tab(label="Keywords", children=keywords_subtab),
-                dcc.Tab(label="Named Entities", children=entities_subtab)
-            ], id="sources-subtabs", className="custom-tabs"),
-        ], id="sources-content-container"),
+        # Wrap everything in a loading component
+        dcc.Loading(
+            id="sources-main-loading",
+            type="default",  # This triggers the horizontal radar sweep
+            color="#13376f",
+            children=[
+                # Loading message container
+                html.Div([
+                    html.Div([
+                        html.P("Preparing data visualizations... 🎉", 
+                               className="text-center mt-3", 
+                               style={'color': '#666', 'font-weight': 'bold'}),
+                        html.P("(Our algorithms are doing their best impression of a speed reader!)", 
+                               className="text-muted text-center small"),
+                        html.P("Did you know? The complete corpus contains more words than the entire Harry Potter series × 100! ⚡", 
+                               className="text-info text-center small mt-3",
+                               style={'font-style': 'italic'})
+                    ], id="sources-loading-messages", 
+                       style={'padding': '20px', 'background': '#f8f9fa', 'border-radius': '8px', 
+                              'margin-bottom': '20px', 'display': 'none'})
+                ]),
+                
+                # Content container that gets updated
+                html.Div(id="sources-content-container")
+            ]
+        ),
         
         # Sources-specific About modal
         dbc.Modal([
@@ -2078,14 +2068,34 @@ def register_sources_tab_callbacks(app):
             return not is_open
         return is_open
     
+    # Clientside callback to show loading messages immediately
+    app.clientside_callback(
+        """
+        function(n_clicks, active_tab) {
+            // Show loading messages when Sources tab becomes active or button is clicked
+            if (active_tab === 'tab-sources') {
+                return {'padding': '20px', 'background': '#f8f9fa', 'border-radius': '8px', 
+                        'margin-bottom': '20px', 'display': 'block'};
+            }
+            return dash_clientside.no_update;
+        }
+        """,
+        Output("sources-loading-messages", "style", allow_duplicate=True),
+        [Input("sources-filter-button", "n_clicks"), Input("tabs", "active_tab")],
+        prevent_initial_call=False
+    )
+    
+    
     # Main callback for updating sources tab content
     @app.callback(
         [
             Output("sources-result-stats", "children"),
-            Output("sources-content-container", "children")
+            Output("sources-content-container", "children"),
+            Output("sources-loading-messages", "style")
         ],
         [
-            Input("sources-filter-button", "n_clicks")
+            Input("sources-filter-button", "n_clicks"),
+            Input("tabs", "active_tab")  # Add tabs input to trigger on tab change
         ],
         [
             State("sources-language-dropdown", "value"),
@@ -2096,7 +2106,7 @@ def register_sources_tab_callbacks(app):
         ],
         prevent_initial_call=False  # Load data automatically on initial visit
     )
-    def update_sources_tab(n_clicks, lang_val, db_val, source_type, start_date, end_date):
+    def update_sources_tab(n_clicks, active_tab, lang_val, db_val, source_type, start_date, end_date):
         """
         Update the Sources tab based on filter selections.
         
@@ -2112,7 +2122,12 @@ def register_sources_tab_callbacks(app):
         Returns:
             tuple: (stats_html, updated_tabs)
         """
-        logging.info(f"Sources tab callback triggered - n_clicks: {n_clicks}")
+        logging.info(f"Sources tab callback triggered - n_clicks: {n_clicks}, active_tab: {active_tab}")
+        
+        # Check if Sources tab is active
+        if active_tab != "tab-sources":
+            # Don't load data if not on Sources tab
+            return dash.no_update, dash.no_update, dash.no_update
         
         # Process filters - set defaults if None for initial load
         if lang_val is None:
@@ -2168,7 +2183,8 @@ def register_sources_tab_callbacks(app):
             logging.info("Named entities data fetched")
         except Exception as e:
             logging.error(f"Error fetching data: {e}")
-            return html.Div(f"Error loading data: {str(e)}"), []
+            error_content = html.Div(f"Error loading data: {str(e)}", className="alert alert-danger")
+            return error_content, error_content, {'display': 'none'}
         
         # Get time series data with error handling - ONLY for the active subtab later
         # For now, we'll fetch minimal time series data
@@ -2248,24 +2264,17 @@ def register_sources_tab_callbacks(app):
             entity_db_breakdown
         )
         
-        # Wrap the tabs in a loading component to show radar pulse
-        updated_tabs_content = dcc.Loading(
-            id="sources-data-loading",
-            type="default",  # Use default type to trigger the horizontal radar sweep
-            color="#13376f",
-            children=[
-                dcc.Tabs([
-                    dcc.Tab(label="Documents", children=documents_subtab),
-                    dcc.Tab(label="Chunks", children=chunks_subtab),
-                    dcc.Tab(label="Taxonomy Combinations", children=taxonomy_subtab),
-                    dcc.Tab(label="Keywords", children=keywords_subtab),
-                    dcc.Tab(label="Named Entities", children=entities_subtab)
-                ], id="sources-subtabs", className="custom-tabs")
-            ]
-        )
+        # Create the tabs content
+        updated_tabs_content = dcc.Tabs([
+            dcc.Tab(label="Documents", children=documents_subtab),
+            dcc.Tab(label="Chunks", children=chunks_subtab),
+            dcc.Tab(label="Taxonomy Combinations", children=taxonomy_subtab),
+            dcc.Tab(label="Keywords", children=keywords_subtab),
+            dcc.Tab(label="Named Entities", children=entities_subtab)
+        ], id="sources-subtabs", className="custom-tabs")
         
-        # Return updated content
-        return stats_html, updated_tabs_content
+        # Return updated content with hidden loading messages
+        return stats_html, updated_tabs_content, {'display': 'none'}
     
     # Callback to toggle the Documents About modal
     @app.callback(
