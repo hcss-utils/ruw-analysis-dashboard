@@ -1935,20 +1935,22 @@ def create_sources_tab_layout(db_options: List, min_date: datetime = None, max_d
     ])
     
     # Create placeholder content for lazy loading with humor
-    loading_content = html.Div([
-        html.Div([
-            html.Div(className="ring-1"),
-            html.Div(className="ring-2")
-        ], className="radar-pulse", style={"margin": "0 auto"}),
-        html.P("Preparing data visualizations... 🎉", 
-               className="text-center mt-3", 
-               style={'color': '#666', 'font-weight': 'bold'}),
-        html.P("(Our algorithms are doing their best impression of a speed reader!)", 
-               className="text-muted text-center small"),
-        html.P("Did you know? The complete corpus contains more words than the entire Harry Potter series × 100! ⚡", 
-               className="text-info text-center small mt-3",
-               style={'font-style': 'italic'})
-    ], style={'padding': '40px'})
+    loading_content = dcc.Loading(
+        id="sources-loading",
+        type="default",  # This will use Dash's default loading animation which triggers the radar sweep
+        children=[
+            html.Div([
+                html.P("Preparing data visualizations... 🎉", 
+                       className="text-center mt-3", 
+                       style={'color': '#666', 'font-weight': 'bold'}),
+                html.P("(Our algorithms are doing their best impression of a speed reader!)", 
+                       className="text-muted text-center small"),
+                html.P("Did you know? The complete corpus contains more words than the entire Harry Potter series × 100! ⚡", 
+                       className="text-info text-center small mt-3",
+                       style={'font-style': 'italic'})
+            ], style={'padding': '40px', 'min-height': '200px'})
+        ]
+    )
     
     # Create initial placeholder tabs
     documents_subtab = loading_content
@@ -1960,6 +1962,9 @@ def create_sources_tab_layout(db_options: List, min_date: datetime = None, max_d
     # Create the sources tab with subtabs
     sources_tab = html.Div([
         corpus_overview,
+        
+        # Add stats container
+        html.Div(id="sources-result-stats", className="mb-3"),
         
         # Add a container div that can show loading state
         html.Div([
@@ -2246,9 +2251,8 @@ def register_sources_tab_callbacks(app):
         # Wrap the tabs in a loading component to show radar pulse
         updated_tabs_content = dcc.Loading(
             id="sources-data-loading",
-            type="circle",
+            type="default",  # Use default type to trigger the horizontal radar sweep
             color="#13376f",
-            className="radar-loading",
             children=[
                 dcc.Tabs([
                     dcc.Tab(label="Documents", children=documents_subtab),
