@@ -316,7 +316,6 @@ def create_compare_tab_layout(db_options: List, min_date: datetime = None, max_d
                         ),
                     ], width=12)
                 ])
-                ])
             ])
         ], className="my-4"),
         
