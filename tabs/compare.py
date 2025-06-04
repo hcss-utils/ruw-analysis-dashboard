@@ -23,11 +23,93 @@ import os
 # Add the project root to the path to import modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database.data_fetchers import fetch_category_data
+from database.data_fetchers_sources import fetch_keywords_data, fetch_named_entities_data
 from components.layout import create_filter_card
 from components.cards import create_comparison_card, create_visualization_guide_card
 from utils.helpers import create_comparison_text
 from visualizations.comparison import create_comparison_plot
 from config import COMPARISON_VISUALIZATION_OPTIONS, DEFAULT_START_DATE, DEFAULT_END_DATE
+
+
+def convert_keywords_to_comparison_format(keywords_data: Dict) -> pd.DataFrame:
+    """
+    Convert keywords data to comparison format.
+    
+    Args:
+        keywords_data: Keywords data dictionary
+        
+    Returns:
+        pd.DataFrame with category, subcategory, sub_subcategory, and count columns
+    """
+    if not keywords_data or 'top_keywords' not in keywords_data:
+        return pd.DataFrame()
+    
+    # Create DataFrame from top keywords
+    rows = []
+    for i, (keyword, count) in enumerate(zip(keywords_data['top_keywords']['labels'][:50], 
+                                           keywords_data['top_keywords']['values'][:50])):
+        rows.append({
+            'category': 'Keywords',
+            'subcategory': keyword,
+            'sub_subcategory': '',
+            'count': count
+        })
+    
+    return pd.DataFrame(rows)
+
+
+def convert_entities_to_comparison_format(entities_data: Dict, entity_type: str = 'ALL') -> pd.DataFrame:
+    """
+    Convert named entities data to comparison format.
+    
+    Args:
+        entities_data: Named entities data dictionary
+        entity_type: Entity type filter ('ALL' or specific type like 'GPE', 'ORG', etc.)
+        
+    Returns:
+        pd.DataFrame with category, subcategory, sub_subcategory, and count columns
+    """
+    if not entities_data or 'top_entities' not in entities_data:
+        return pd.DataFrame()
+    
+    # Create DataFrame from top entities
+    rows = []
+    
+    # If filtering by entity type, use filtered data
+    if entity_type != 'ALL' and 'entities_by_type' in entities_data:
+        entity_types = entities_data['entities_by_type']
+        if entity_type in entity_types:
+            type_data = entity_types[entity_type]
+            for entity, count in zip(type_data['entities'][:50], type_data['counts'][:50]):
+                rows.append({
+                    'category': f'{entity_type} Entities',
+                    'subcategory': entity,
+                    'sub_subcategory': '',
+                    'count': count
+                })
+    else:
+        # Use all entities grouped by type
+        if 'entities_by_type' in entities_data:
+            for ent_type, type_data in entities_data['entities_by_type'].items():
+                for entity, count in zip(type_data['entities'][:10], type_data['counts'][:10]):
+                    rows.append({
+                        'category': f'{ent_type} Entities',
+                        'subcategory': entity,
+                        'sub_subcategory': '',
+                        'count': count
+                    })
+        else:
+            # Fallback to top entities without type grouping
+            for i, (entity, count) in enumerate(zip(entities_data['top_entities']['labels'][:50], 
+                                                   entities_data['top_entities']['values'][:50])):
+                rows.append({
+                    'category': 'Named Entities',
+                    'subcategory': entity,
+                    'sub_subcategory': '',
+                    'count': count
+                })
+    
+    return pd.DataFrame(rows)
 
 
 def create_compare_tab_layout(db_options: List, min_date: datetime = None, max_date: datetime = None) -> html.Div:
@@ -181,6 +263,39 @@ def create_compare_tab_layout(db_options: List, min_date: datetime = None, max_d
             dbc.CardBody([
                 dbc.Row([
                     dbc.Col([
+                        html.Label("Data Type:"),
+                        dcc.Dropdown(
+                            id='compare-data-type',
+                            options=[
+                                {'label': 'Taxonomy Elements', 'value': 'taxonomy'},
+                                {'label': 'Keywords', 'value': 'keywords'},
+                                {'label': 'Named Entities', 'value': 'named_entities'}
+                            ],
+                            value='taxonomy',
+                            className="mb-2"
+                        ),
+                    ], width=4),
+                    dbc.Col([
+                        html.Div([
+                            html.Label("Entity Type Filter:", id='entity-type-label', style={'display': 'none'}),
+                            dcc.Dropdown(
+                                id='compare-entity-type-filter',
+                                options=[
+                                    {'label': 'All Entity Types', 'value': 'ALL'},
+                                    {'label': 'Locations (GPE)', 'value': 'GPE'},
+                                    {'label': 'Organizations (ORG)', 'value': 'ORG'},
+                                    {'label': 'People (PERSON)', 'value': 'PERSON'},
+                                    {'label': 'Nationalities (NORP)', 'value': 'NORP'},
+                                    {'label': 'Dates (DATE)', 'value': 'DATE'},
+                                    {'label': 'Events (EVENT)', 'value': 'EVENT'}
+                                ],
+                                value='ALL',
+                                className="mb-2",
+                                style={'display': 'none'}
+                            ),
+                        ], id='entity-filter-container'),
+                    ], width=4),
+                    dbc.Col([
                         html.Label("Visualization Type:"),
                         dcc.Dropdown(
                             id='compare-viz-type',
@@ -188,16 +303,19 @@ def create_compare_tab_layout(db_options: List, min_date: datetime = None, max_d
                             value='diff_means',  # Changed default to difference in means
                             className="mb-2"
                         ),
-                    ], width=8),
+                    ], width=4),
+                ]),
+                dbc.Row([
                     dbc.Col([
-                        html.Br(),
                         dbc.Button(
                             'Compare', 
                             id='compare-button', 
                             color="primary", 
-                            className="mt-2"
+                            className="mt-3",
+                            style={"width": "100%"}
                         ),
-                    ], width=4, style={"text-align": "right"})
+                    ], width=12)
+                ])
                 ])
             ])
         ], className="my-4"),
@@ -366,6 +484,17 @@ def register_compare_callbacks(app):
         if n1 or n2:
             return not is_open
         return is_open
+    
+    # Callback to show/hide entity type filter
+    @app.callback(
+        [Output('entity-type-label', 'style'),
+         Output('compare-entity-type-filter', 'style')],
+        Input('compare-data-type', 'value')
+    )
+    def toggle_entity_filter(data_type):
+        if data_type == 'named_entities':
+            return {'display': 'block'}, {'display': 'block'}
+        return {'display': 'none'}, {'display': 'none'}
         
     # Callback to store data for both slices
     @app.callback(
@@ -377,6 +506,8 @@ def register_compare_callbacks(app):
         ],
         Input('compare-button', 'n_clicks'),
         [
+            State('compare-data-type', 'value'),
+            State('compare-entity-type-filter', 'value'),
             State('compare-language-dropdown-a', 'value'),
             State('compare-database-dropdown-a', 'value'),
             State('compare-source-type-a', 'value'),
@@ -389,13 +520,15 @@ def register_compare_callbacks(app):
             State('compare-date-picker-b', 'end_date')
         ]
     )
-    def store_comparison_data(n_clicks, lang_a, db_a, source_a, start_date_a, end_date_a, 
+    def store_comparison_data(n_clicks, data_type, entity_type, lang_a, db_a, source_a, start_date_a, end_date_a, 
                               lang_b, db_b, source_b, start_date_b, end_date_b):
         """
         Store comparison data for both slices.
         
         Args:
             n_clicks: Number of button clicks
+            data_type: Type of data to compare (taxonomy, keywords, named_entities)
+            entity_type: Entity type filter (for named entities)
             lang_a: Language for slice A
             db_a: Database for slice A
             source_a: Source type for slice A
@@ -410,7 +543,7 @@ def register_compare_callbacks(app):
         Returns:
             tuple: (df_a, df_b, stats_a, stats_b)
         """
-        logging.info("Storing comparison data...")
+        logging.info(f"Storing comparison data for {data_type}...")
         if not n_clicks:
             return [], [], "", ""
         
@@ -423,16 +556,71 @@ def register_compare_callbacks(app):
         if start_date_b and end_date_b:
             date_range_b = (start_date_b, end_date_b)
         
-        # Fetch data for both slices
-        df_a = fetch_category_data(lang_a, db_a, source_a, date_range_a)
-        df_b = fetch_category_data(lang_b, db_b, source_b, date_range_b)
+        # Fetch data based on data type
+        if data_type == 'taxonomy':
+            df_a = fetch_category_data(lang_a, db_a, source_a, date_range_a)
+            df_b = fetch_category_data(lang_b, db_b, source_b, date_range_b)
+        elif data_type == 'keywords':
+            # Fetch keywords data
+            keywords_a = fetch_keywords_data(lang_a, db_a, source_a, date_range_a)
+            keywords_b = fetch_keywords_data(lang_b, db_b, source_b, date_range_b)
+            # Convert to comparison format
+            df_a = convert_keywords_to_comparison_format(keywords_a)
+            df_b = convert_keywords_to_comparison_format(keywords_b)
+        elif data_type == 'named_entities':
+            # Fetch named entities data
+            entities_a = fetch_named_entities_data(lang_a, db_a, source_a, date_range_a)
+            entities_b = fetch_named_entities_data(lang_b, db_b, source_b, date_range_b)
+            # Convert to comparison format with optional entity type filter
+            df_a = convert_entities_to_comparison_format(entities_a, entity_type)
+            df_b = convert_entities_to_comparison_format(entities_b, entity_type)
+        else:
+            df_a = pd.DataFrame()
+            df_b = pd.DataFrame()
         
-        # Create descriptive stats for slices
-        cat_count_a = df_a['category'].nunique() if not df_a.empty else 0
-        total_count_a = df_a['count'].sum() if not df_a.empty else 0
-        
-        cat_count_b = df_b['category'].nunique() if not df_b.empty else 0
-        total_count_b = df_b['count'].sum() if not df_b.empty else 0
+        # Create descriptive stats for slices based on data type
+        if data_type == 'taxonomy':
+            cat_count_a = df_a['category'].nunique() if not df_a.empty else 0
+            total_count_a = df_a['count'].sum() if not df_a.empty else 0
+            subcat_count_a = df_a['subcategory'].nunique() if not df_a.empty else 0
+            
+            cat_count_b = df_b['category'].nunique() if not df_b.empty else 0
+            total_count_b = df_b['count'].sum() if not df_b.empty else 0
+            subcat_count_b = df_b['subcategory'].nunique() if not df_b.empty else 0
+            
+            type_label = "Taxonomy"
+            stats_label_a = f"Categories: {cat_count_a} | Subcategories: {subcat_count_a}"
+            stats_label_b = f"Categories: {cat_count_b} | Subcategories: {subcat_count_b}"
+        elif data_type == 'keywords':
+            # For keywords, count unique keywords
+            keyword_count_a = df_a['subcategory'].nunique() if not df_a.empty else 0
+            total_count_a = df_a['count'].sum() if not df_a.empty else 0
+            
+            keyword_count_b = df_b['subcategory'].nunique() if not df_b.empty else 0
+            total_count_b = df_b['count'].sum() if not df_b.empty else 0
+            
+            type_label = "Keywords"
+            stats_label_a = f"Unique keywords: {keyword_count_a}"
+            stats_label_b = f"Unique keywords: {keyword_count_b}"
+        elif data_type == 'named_entities':
+            # For entities, show entity types and count
+            entity_types_a = df_a['category'].nunique() if not df_a.empty else 0
+            entity_count_a = df_a['subcategory'].nunique() if not df_a.empty else 0
+            total_count_a = df_a['count'].sum() if not df_a.empty else 0
+            
+            entity_types_b = df_b['category'].nunique() if not df_b.empty else 0
+            entity_count_b = df_b['subcategory'].nunique() if not df_b.empty else 0
+            total_count_b = df_b['count'].sum() if not df_b.empty else 0
+            
+            type_label = "Named Entities" if entity_type == 'ALL' else f"{entity_type} Entities"
+            stats_label_a = f"Entity types: {entity_types_a} | Unique entities: {entity_count_a}"
+            stats_label_b = f"Entity types: {entity_types_b} | Unique entities: {entity_count_b}"
+        else:
+            type_label = "Data"
+            stats_label_a = "No data"
+            stats_label_b = "No data"
+            total_count_a = 0
+            total_count_b = 0
         
         # Format filter information for display
         def format_filter_info(lang, db, source, date_range):
@@ -445,23 +633,19 @@ def register_compare_callbacks(app):
         filter_info_a = format_filter_info(lang_a, db_a, source_a, date_range_a)
         filter_info_b = format_filter_info(lang_b, db_b, source_b, date_range_b)
         
-        # Add subcategory stats
-        subcat_count_a = df_a['subcategory'].nunique() if not df_a.empty else 0
-        subcat_count_b = df_b['subcategory'].nunique() if not df_b.empty else 0
-        
         stats_a = html.Div([
-            html.P(f"Categories: {cat_count_a} | Subcategories: {subcat_count_a}", className="mb-0"),
-            html.P(f"Total count: {total_count_a:,}", className="mb-0"),
+            html.P(f"{type_label}: {stats_label_a}", className="mb-0"),
+            html.P(f"Total occurrences: {total_count_a:,}", className="mb-0"),
             html.P(filter_info_a, className="text-muted small")
         ])
         
         stats_b = html.Div([
-            html.P(f"Categories: {cat_count_b} | Subcategories: {subcat_count_b}", className="mb-0"),
-            html.P(f"Total count: {total_count_b:,}", className="mb-0"),
+            html.P(f"{type_label}: {stats_label_b}", className="mb-0"),
+            html.P(f"Total occurrences: {total_count_b:,}", className="mb-0"),
             html.P(filter_info_b, className="text-muted small")
         ])
         
-        logging.info(f"Comparison data stored. Slice A: {cat_count_a} categories, {total_count_a} items. Slice B: {cat_count_b} categories, {total_count_b} items.")
+        logging.info(f"Comparison data stored for {data_type}. Slice A: {total_count_a} items. Slice B: {total_count_b} items.")
         return (
             df_a.to_dict('records') if not df_a.empty else [],
             df_b.to_dict('records') if not df_b.empty else [],
