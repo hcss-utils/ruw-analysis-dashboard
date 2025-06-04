@@ -1951,9 +1951,6 @@ def create_sources_tab_layout(db_options: List, min_date: datetime = None, max_d
     sources_tab = html.Div([
         corpus_overview,
         
-        # Add result stats div that the callback expects
-        html.Div(id="sources-result-stats", className="mb-3"),
-        
         # Wrap subtabs in loading component for radar pulse effect
         dcc.Loading(
             id="sources-main-loading",
