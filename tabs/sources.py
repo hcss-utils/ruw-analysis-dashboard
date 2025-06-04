@@ -1964,7 +1964,14 @@ def create_sources_tab_layout(db_options: List, min_date: datetime = None, max_d
                 ]),
                 
                 # Content container that gets updated
-                html.Div(id="sources-content-container")
+                html.Div(id="sources-content-container", children=[
+                    # Initial placeholder content
+                    html.Div([
+                        html.P("Loading data...", 
+                               className="text-center text-muted mt-5", 
+                               style={'font-size': '18px'})
+                    ], style={'min-height': '400px'})
+                ])
             ]
         ),
         
@@ -2072,8 +2079,10 @@ def register_sources_tab_callbacks(app):
     app.clientside_callback(
         """
         function(n_clicks, active_tab) {
+            console.log('Sources clientside callback - active_tab:', active_tab, 'n_clicks:', n_clicks);
             // Show loading messages when Sources tab becomes active or button is clicked
             if (active_tab === 'tab-sources') {
+                console.log('Showing loading messages for Sources tab');
                 return {'padding': '20px', 'background': '#f8f9fa', 'border-radius': '8px', 
                         'margin-bottom': '20px', 'display': 'block'};
             }
