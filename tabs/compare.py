@@ -8,7 +8,7 @@ This tab allows comparison of two different data slices using various visualizat
 
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional, Union, Any
+from typing import Dict, List, Optional, Union, Any, Tuple
 
 import pandas as pd
 import dash
