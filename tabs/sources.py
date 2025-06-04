@@ -1934,11 +1934,18 @@ def create_sources_tab_layout(db_options: List, min_date: datetime = None, max_d
         ], className="text-muted mb-4", style={"border": "1px solid #ddd", "padding": "10px", "background": "#f9f9f9"})
     ])
     
-    # Create placeholder content for lazy loading
+    # Create placeholder content for lazy loading with humor
     loading_content = html.Div([
-        html.P("Click 'Apply Filters' to load data", 
-               style={'text-align': 'center', 'color': '#666', 'font-style': 'italic', 'padding': '40px'})
-    ])
+        html.Div(className="radar-pulse", style={"margin": "0 auto"}),
+        html.P("Preparing data visualizations... 🎉", 
+               className="text-center mt-3", 
+               style={'color': '#666', 'font-weight': 'bold'}),
+        html.P("(Our algorithms are doing their best impression of a speed reader!)", 
+               className="text-muted text-center small"),
+        html.P("Did you know? The complete corpus contains more words than the entire Harry Potter series × 100! ⚡", 
+               className="text-info text-center small mt-3",
+               style={'font-style': 'italic'})
+    ], style={'padding': '40px'})
     
     # Create initial placeholder tabs
     documents_subtab = loading_content
@@ -2079,7 +2086,7 @@ def register_sources_tab_callbacks(app):
             State("sources-date-range-picker", "start_date"),
             State("sources-date-range-picker", "end_date")
         ],
-        prevent_initial_call=True  # Don't load any data until filters are applied
+        prevent_initial_call=False  # Load data automatically on initial visit
     )
     def update_sources_tab(n_clicks, lang_val, db_val, source_type, start_date, end_date):
         """
@@ -2099,8 +2106,14 @@ def register_sources_tab_callbacks(app):
         """
         logging.info(f"Sources tab callback triggered - n_clicks: {n_clicks}")
         
-        # Process filters regardless of whether button was clicked
-        # This ensures data loads on initial page load
+        # Process filters - set defaults if None for initial load
+        if lang_val is None:
+            lang_val = 'ALL'
+        if db_val is None:
+            db_val = 'ALL'
+        if source_type is None:
+            source_type = 'ALL'
+            
         date_range = None
         if start_date is not None and end_date is not None:
             date_range = (start_date, end_date)
@@ -2123,34 +2136,8 @@ def register_sources_tab_callbacks(app):
             html.P(f"Filters: {' | '.join(filter_desc) if filter_desc else 'None'}", className="text-muted")
         ])
         
-        # Check if this is initial load (no filters applied)
-        is_initial_load = (n_clicks is None or n_clicks == 0) and lang_val == 'ALL' and db_val == 'ALL'
-        
-        # For initial load, return empty state with instruction
-        if is_initial_load:
-            logging.info("Sources tab initial load - returning empty state")
-            
-            # Return empty stats and placeholder tabs
-            stats_html = html.Div([
-                html.P("Click 'Apply Filters' to load data", 
-                      style={'text-align': 'center', 'color': '#666', 'font-style': 'italic', 'padding': '20px'})
-            ])
-            
-            # Create empty placeholder tabs
-            placeholder_content = html.Div([
-                html.P("Apply filters to view data", 
-                      style={'text-align': 'center', 'color': '#999', 'padding': '40px', 'font-style': 'italic'})
-            ])
-            
-            placeholder_tabs = dcc.Tabs([
-                dcc.Tab(label="Documents", children=placeholder_content),
-                dcc.Tab(label="Chunks", children=placeholder_content),
-                dcc.Tab(label="Taxonomy Combinations", children=placeholder_content),
-                dcc.Tab(label="Keywords", children=placeholder_content),
-                dcc.Tab(label="Named Entities", children=placeholder_content)
-            ], id="sources-subtabs", className="custom-tabs")
-            
-            return stats_html, placeholder_tabs
+        # Remove the initial load check - we want to load data automatically
+        # The prevent_initial_call=False ensures this runs on page load
         
         # Fetch filtered data with error handling
         try:
