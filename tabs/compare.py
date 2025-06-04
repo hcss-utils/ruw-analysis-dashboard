@@ -615,6 +615,7 @@ def register_compare_callbacks(app):
         Input('compare-data-type', 'value')
     )
     def toggle_entity_filter(data_type):
+        logging.info(f"Data type changed to: {data_type}")
         if data_type == 'named_entities':
             return {'display': 'block'}, {'display': 'block'}
         return {'display': 'none'}, {'display': 'none'}
@@ -667,6 +668,7 @@ def register_compare_callbacks(app):
             tuple: (df_a, df_b, stats_a, stats_b)
         """
         logging.info(f"Storing comparison data for {data_type}...")
+        logging.info(f"Entity type filter: {entity_type}")
         logging.info(f"Slice A filters: lang={lang_a}, db={db_a}, source={source_a}")
         logging.info(f"Slice B filters: lang={lang_b}, db={db_b}, source={source_b}")
         if not n_clicks:
@@ -715,15 +717,29 @@ def register_compare_callbacks(app):
             
             # Get the union of top entities from both datasets for comparison
             all_entities = set()
+            
+            logging.info(f"Entity type filter selected: {entity_type}")
+            
             if entities_a and 'top_entities' in entities_a:
                 # Add tuples of (entity, type) to handle entity types
-                for i in range(min(20, len(entities_a['top_entities']['labels']))):
-                    all_entities.add((entities_a['top_entities']['labels'][i], 
-                                    entities_a['top_entities']['types'][i] if i < len(entities_a['top_entities']['types']) else 'Unknown'))
+                labels_a = entities_a['top_entities'].get('labels', [])
+                types_a = entities_a['top_entities'].get('types', [])
+                for i in range(min(20, len(labels_a))):
+                    ent_type = types_a[i] if i < len(types_a) else 'Unknown'
+                    # Only add if it matches the filter or filter is ALL
+                    if entity_type == 'ALL' or ent_type == entity_type:
+                        all_entities.add((labels_a[i], ent_type))
+                        
             if entities_b and 'top_entities' in entities_b:
-                for i in range(min(20, len(entities_b['top_entities']['labels']))):
-                    all_entities.add((entities_b['top_entities']['labels'][i], 
-                                    entities_b['top_entities']['types'][i] if i < len(entities_b['top_entities']['types']) else 'Unknown'))
+                labels_b = entities_b['top_entities'].get('labels', [])
+                types_b = entities_b['top_entities'].get('types', [])
+                for i in range(min(20, len(labels_b))):
+                    ent_type = types_b[i] if i < len(types_b) else 'Unknown'
+                    # Only add if it matches the filter or filter is ALL
+                    if entity_type == 'ALL' or ent_type == entity_type:
+                        all_entities.add((labels_b[i], ent_type))
+            
+            logging.info(f"Unified entities count after filtering: {len(all_entities)}")
             
             # Convert to comparison format with unified entities
             df_a = convert_entities_to_comparison_format_unified(entities_a, list(all_entities)[:15], entity_type)
