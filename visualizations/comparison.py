@@ -22,6 +22,36 @@ from config import THEME_COLORS
 from utils.helpers import hex_to_rgba
 
 
+def _detect_cross_language_data(df_a: pd.DataFrame, df_b: pd.DataFrame) -> bool:
+    """
+    Detect if the two datasets are from different languages based on category overlap.
+    
+    Args:
+        df_a: DataFrame A
+        df_b: DataFrame B
+        
+    Returns:
+        bool: True if datasets appear to be from different languages
+    """
+    if df_a.empty or df_b.empty:
+        return False
+        
+    # Get unique categories from each dataset
+    cats_a = set(df_a['category'].unique())
+    cats_b = set(df_b['category'].unique())
+    
+    # Calculate overlap
+    overlap = cats_a.intersection(cats_b)
+    total_cats = len(cats_a.union(cats_b))
+    
+    # If less than 10% overlap, consider it cross-language
+    overlap_ratio = len(overlap) / total_cats if total_cats > 0 else 0
+    
+    logging.info(f"Category overlap: {len(overlap)}/{total_cats} ({overlap_ratio:.1%})")
+    
+    return overlap_ratio < 0.1
+
+
 def create_comparison_plot(
     df_a: Union[List, pd.DataFrame], 
     df_b: Union[List, pd.DataFrame], 
@@ -61,6 +91,9 @@ def create_comparison_plot(
         empty_fig = go.Figure().update_layout(title="No data available for comparison")
         return empty_fig, empty_fig
     
+    # Check if this appears to be cross-language data
+    is_cross_language = _detect_cross_language_data(df_a, df_b)
+    
     # Process data for categories (usually the first level in the taxonomy)
     cat_a = df_a.groupby('category')['count'].sum().reset_index()
     cat_b = df_b.groupby('category')['count'].sum().reset_index()
@@ -80,6 +113,12 @@ def create_comparison_plot(
     
     cat_a['percentage'] = (cat_a['count'] / total_a * 100).round(1) if total_a > 0 else 0
     cat_b['percentage'] = (cat_b['count'] / total_b * 100).round(1) if total_b > 0 else 0
+    
+    # For cross-language comparisons, use appropriate visualization
+    if is_cross_language and plot_type in ['diff_means', 'radar', 'parallel']:
+        # For cross-language, these visualizations don't make sense with different categories
+        # Use side-by-side bar charts instead
+        return _create_cross_language_comparison(cat_a, cat_b, slice_a_name, slice_b_name)
     
     # Choose visualization type
     if plot_type == 'parallel':
@@ -790,6 +829,130 @@ def _create_diff_means_chart(
             xanchor="center",
             x=0.5
         )
+    )
+    
+    return fig, fig2
+
+
+def _create_cross_language_comparison(
+    cat_a: pd.DataFrame, 
+    cat_b: pd.DataFrame, 
+    slice_a_name: str, 
+    slice_b_name: str
+) -> Tuple[go.Figure, go.Figure]:
+    """
+    Create comparison visualization for cross-language data where categories don't overlap.
+    
+    Args:
+        cat_a: Category data for slice A
+        cat_b: Category data for slice B
+        slice_a_name: Name for slice A
+        slice_b_name: Name for slice B
+        
+    Returns:
+        Tuple[go.Figure, go.Figure]: Side-by-side bar charts
+    """
+    # Sort by count descending and take top 15
+    cat_a_top = cat_a.nlargest(15, 'count')
+    cat_b_top = cat_b.nlargest(15, 'count')
+    
+    # Create side-by-side bar charts
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=(f"Top {slice_a_name} Items", f"Top {slice_b_name} Items"),
+        shared_yaxes=False,
+        horizontal_spacing=0.15
+    )
+    
+    # Add bars for slice A
+    fig.add_trace(
+        go.Bar(
+            y=cat_a_top['category'],
+            x=cat_a_top['count'],
+            orientation='h',
+            name=slice_a_name,
+            marker_color=THEME_COLORS.get('russian', '#1f77b4'),
+            text=cat_a_top.apply(lambda x: f"{x['count']:,} ({x['percentage']:.1f}%)", axis=1),
+            textposition='auto',
+            hovertemplate='%{y}<br>Count: %{x:,}<br>Percentage: %{text}<extra></extra>'
+        ),
+        row=1, col=1
+    )
+    
+    # Add bars for slice B
+    fig.add_trace(
+        go.Bar(
+            y=cat_b_top['category'],
+            x=cat_b_top['count'],
+            orientation='h',
+            name=slice_b_name,
+            marker_color=THEME_COLORS.get('western', '#ff7f0e'),
+            text=cat_b_top.apply(lambda x: f"{x['count']:,} ({x['percentage']:.1f}%)", axis=1),
+            textposition='auto',
+            hovertemplate='%{y}<br>Count: %{x:,}<br>Percentage: %{text}<extra></extra>'
+        ),
+        row=1, col=2
+    )
+    
+    fig.update_layout(
+        title=f"Top Items Comparison: {slice_a_name} vs {slice_b_name}",
+        height=600,
+        width=1400,
+        showlegend=False,
+        margin=dict(l=200, r=50, t=80, b=50)
+    )
+    
+    fig.update_xaxes(title_text="Count", row=1, col=1)
+    fig.update_xaxes(title_text="Count", row=1, col=2)
+    fig.update_yaxes(tickmode='linear', row=1, col=1)
+    fig.update_yaxes(tickmode='linear', row=1, col=2)
+    
+    # Add annotation explaining the visualization
+    fig.add_annotation(
+        text="Note: Items from different languages are shown separately as they have no direct overlap.<br>"
+             "The percentages shown are relative to each dataset's total.",
+        xref="paper", yref="paper",
+        x=0.5, y=-0.1,
+        showarrow=False,
+        font=dict(size=12),
+        align="center",
+        bgcolor="rgba(255,255,255,0.8)",
+        bordercolor="gray",
+        borderwidth=1,
+        borderpad=4
+    )
+    
+    # Create a summary comparison figure
+    summary_data = [
+        {'Metric': 'Total Items', slice_a_name: len(cat_a), slice_b_name: len(cat_b)},
+        {'Metric': 'Total Count', slice_a_name: cat_a['count'].sum(), slice_b_name: cat_b['count'].sum()},
+        {'Metric': 'Top Item Count', slice_a_name: cat_a_top.iloc[0]['count'] if not cat_a_top.empty else 0, 
+         slice_b_name: cat_b_top.iloc[0]['count'] if not cat_b_top.empty else 0},
+        {'Metric': 'Top Item %', slice_a_name: cat_a_top.iloc[0]['percentage'] if not cat_a_top.empty else 0, 
+         slice_b_name: cat_b_top.iloc[0]['percentage'] if not cat_b_top.empty else 0}
+    ]
+    
+    summary_df = pd.DataFrame(summary_data)
+    
+    fig2 = go.Figure()
+    
+    # Add bars for summary metrics
+    for col in [slice_a_name, slice_b_name]:
+        fig2.add_trace(go.Bar(
+            x=summary_df['Metric'],
+            y=summary_df[col],
+            name=col,
+            text=summary_df[col].apply(lambda x: f"{x:,.0f}" if x > 100 else f"{x:.1f}"),
+            textposition='auto'
+        ))
+    
+    fig2.update_layout(
+        title="Summary Statistics Comparison",
+        xaxis_title="Metric",
+        yaxis_title="Value",
+        height=400,
+        width=800,
+        barmode='group'
     )
     
     return fig, fig2

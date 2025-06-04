@@ -29,6 +29,7 @@ from components.cards import create_comparison_card, create_visualization_guide_
 from utils.helpers import create_comparison_text
 from visualizations.comparison import create_comparison_plot
 from config import COMPARISON_VISUALIZATION_OPTIONS, DEFAULT_START_DATE, DEFAULT_END_DATE
+from utils.keyword_mapping import map_keyword, load_mapping_files
 
 
 def convert_keywords_to_comparison_format(keywords_data: Dict) -> pd.DataFrame:
@@ -143,13 +144,16 @@ def convert_entities_to_comparison_format(entities_data: Dict, entity_type: str 
     return df
 
 
-def convert_keywords_to_comparison_format_unified(keywords_data: Dict, unified_keywords: List[str]) -> pd.DataFrame:
+def convert_keywords_to_comparison_format_unified(keywords_data: Dict, unified_keywords: List[str], 
+                                                  lang: str = None, detect_overlap: bool = True) -> pd.DataFrame:
     """
     Convert keywords data to comparison format using a unified set of keywords.
     
     Args:
         keywords_data: Keywords data dictionary
         unified_keywords: List of keywords to include (union from both datasets)
+        lang: Language of the dataset (for labeling)
+        detect_overlap: Whether to detect if there's no overlap and use dataset's own keywords
         
     Returns:
         pd.DataFrame with category, subcategory, sub_subcategory, and count columns
@@ -174,18 +178,36 @@ def convert_keywords_to_comparison_format_unified(keywords_data: Dict, unified_k
     
     # Create rows for all unified keywords
     rows = []
+    has_overlap = False
     for keyword in unified_keywords:
+        count = keyword_counts.get(keyword, 0)
+        if count > 0:
+            has_overlap = True
         rows.append({
             'category': keyword,
             'subcategory': 'Frequency',
             'sub_subcategory': '',
-            'count': keyword_counts.get(keyword, 0)  # Use 0 if keyword not in this dataset
+            'count': count
         })
+    
+    # If no overlap and detect_overlap is True, use top keywords from this dataset instead
+    if detect_overlap and not has_overlap and keyword_counts:
+        logging.info(f"No keyword overlap detected for {lang} dataset, using top keywords from dataset")
+        rows = []
+        for i, (keyword, count) in enumerate(list(keyword_counts.items())[:15]):
+            rows.append({
+                'category': f"{i+1}. {keyword}",  # Add ranking
+                'subcategory': f'Top {lang}' if lang else 'Top Keywords',
+                'sub_subcategory': '',
+                'count': count
+            })
     
     return pd.DataFrame(rows)
 
 
-def convert_entities_to_comparison_format_unified(entities_data: Dict, unified_entities: List[Tuple[str, str]], entity_type_filter: str = 'ALL') -> pd.DataFrame:
+def convert_entities_to_comparison_format_unified(entities_data: Dict, unified_entities: List[Tuple[str, str]], 
+                                                  entity_type_filter: str = 'ALL', lang: str = None,
+                                                  detect_overlap: bool = True) -> pd.DataFrame:
     """
     Convert named entities data to comparison format using a unified set of entities.
     
@@ -193,6 +215,8 @@ def convert_entities_to_comparison_format_unified(entities_data: Dict, unified_e
         entities_data: Named entities data dictionary
         unified_entities: List of (entity, type) tuples to include
         entity_type_filter: Entity type filter
+        lang: Language of the dataset (for labeling)
+        detect_overlap: Whether to detect if there's no overlap and use dataset's own entities
         
     Returns:
         pd.DataFrame with category, subcategory, sub_subcategory, and count columns
@@ -220,17 +244,34 @@ def convert_entities_to_comparison_format_unified(entities_data: Dict, unified_e
         entity = labels[i]
         ent_type = types[i] if i < len(types) else 'Unknown'
         count = values[i] if i < len(values) else 0
-        entity_counts[(entity, ent_type)] = count
+        if entity_type_filter == 'ALL' or ent_type == entity_type_filter:
+            entity_counts[(entity, ent_type)] = count
     
     # Create rows for all unified entities
     rows = []
+    has_overlap = False
     for entity, ent_type in unified_entities:
         if entity_type_filter == 'ALL' or ent_type == entity_type_filter:
+            count = entity_counts.get((entity, ent_type), 0)
+            if count > 0:
+                has_overlap = True
             rows.append({
                 'category': entity,
                 'subcategory': ent_type,
                 'sub_subcategory': '',
-                'count': entity_counts.get((entity, ent_type), 0)  # Use 0 if not in this dataset
+                'count': count
+            })
+    
+    # If no overlap and detect_overlap is True, use top entities from this dataset instead
+    if detect_overlap and not has_overlap and entity_counts:
+        logging.info(f"No entity overlap detected for {lang} dataset, using top entities from dataset")
+        rows = []
+        for i, ((entity, ent_type), count) in enumerate(list(entity_counts.items())[:15]):
+            rows.append({
+                'category': f"{i+1}. {entity}",  # Add ranking
+                'subcategory': f'{ent_type} ({lang})' if lang else ent_type,
+                'sub_subcategory': '',
+                'count': count
             })
     
     return pd.DataFrame(rows)
@@ -702,9 +743,21 @@ def register_compare_callbacks(app):
             if keywords_b and 'top_keywords' in keywords_b:
                 all_keywords.update(keywords_b['top_keywords']['labels'][:20])
             
+            # Check if there's likely to be overlap (same language or mixed datasets)
+            languages_overlap = lang_a == lang_b or lang_a == 'ALL' or lang_b == 'ALL'
+            
             # Convert to comparison format with unified keywords
-            df_a = convert_keywords_to_comparison_format_unified(keywords_a, list(all_keywords)[:15])
-            df_b = convert_keywords_to_comparison_format_unified(keywords_b, list(all_keywords)[:15])
+            if languages_overlap and len(all_keywords) > 0:
+                # Use unified keywords if languages might overlap
+                df_a = convert_keywords_to_comparison_format_unified(keywords_a, list(all_keywords)[:15], 
+                                                                     lang=lang_a, detect_overlap=True)
+                df_b = convert_keywords_to_comparison_format_unified(keywords_b, list(all_keywords)[:15], 
+                                                                     lang=lang_b, detect_overlap=True)
+            else:
+                # For different languages, use each dataset's top keywords
+                logging.info("Different languages detected, using separate top keywords for each dataset")
+                df_a = convert_keywords_to_comparison_format_unified(keywords_a, [], lang=lang_a, detect_overlap=True)
+                df_b = convert_keywords_to_comparison_format_unified(keywords_b, [], lang=lang_b, detect_overlap=True)
             
             logging.info(f"Converted keywords - Slice A: {len(df_a)} rows, Slice B: {len(df_b)} rows")
         elif data_type == 'named_entities':
@@ -741,9 +794,23 @@ def register_compare_callbacks(app):
             
             logging.info(f"Unified entities count after filtering: {len(all_entities)}")
             
+            # Check if there's likely to be overlap (same language or mixed datasets)
+            languages_overlap = lang_a == lang_b or lang_a == 'ALL' or lang_b == 'ALL'
+            
             # Convert to comparison format with unified entities
-            df_a = convert_entities_to_comparison_format_unified(entities_a, list(all_entities)[:15], entity_type)
-            df_b = convert_entities_to_comparison_format_unified(entities_b, list(all_entities)[:15], entity_type)
+            if languages_overlap and len(all_entities) > 0:
+                # Use unified entities if languages might overlap
+                df_a = convert_entities_to_comparison_format_unified(entities_a, list(all_entities)[:15], 
+                                                                     entity_type, lang=lang_a, detect_overlap=True)
+                df_b = convert_entities_to_comparison_format_unified(entities_b, list(all_entities)[:15], 
+                                                                     entity_type, lang=lang_b, detect_overlap=True)
+            else:
+                # For different languages, use each dataset's top entities
+                logging.info("Different languages detected, using separate top entities for each dataset")
+                df_a = convert_entities_to_comparison_format_unified(entities_a, [], entity_type, 
+                                                                     lang=lang_a, detect_overlap=True)
+                df_b = convert_entities_to_comparison_format_unified(entities_b, [], entity_type, 
+                                                                     lang=lang_b, detect_overlap=True)
             
             logging.info(f"Converted entities - Slice A: {len(df_a)} rows, Slice B: {len(df_b)} rows")
         else:
