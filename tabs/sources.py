@@ -1936,7 +1936,10 @@ def create_sources_tab_layout(db_options: List, min_date: datetime = None, max_d
     
     # Create placeholder content for lazy loading with humor
     loading_content = html.Div([
-        html.Div(className="radar-pulse", style={"margin": "0 auto"}),
+        html.Div([
+            html.Div(className="ring-1"),
+            html.Div(className="ring-2")
+        ], className="radar-pulse", style={"margin": "0 auto"}),
         html.P("Preparing data visualizations... 🎉", 
                className="text-center mt-3", 
                style={'color': '#666', 'font-weight': 'bold'}),
