@@ -1951,23 +1951,17 @@ def create_sources_tab_layout(db_options: List, min_date: datetime = None, max_d
     sources_tab = html.Div([
         corpus_overview,
         
-        # Wrap subtabs in loading component for radar pulse effect
-        dcc.Loading(
-            id="sources-main-loading",
-            type="circle",  # Use circle type for custom radar pulse
-            color="#13376f",
-            className="radar-loading",
-            children=[
-                # Subtabs
-                dcc.Tabs([
-                    dcc.Tab(label="Documents", children=documents_subtab),
-                    dcc.Tab(label="Chunks", children=chunks_subtab),
-                    dcc.Tab(label="Taxonomy Combinations", children=taxonomy_subtab),
-                    dcc.Tab(label="Keywords", children=keywords_subtab),
-                    dcc.Tab(label="Named Entities", children=entities_subtab)
-                ], id="sources-subtabs", className="custom-tabs"),
-            ]
-        ),
+        # Add a container div that can show loading state
+        html.Div([
+            # Subtabs
+            dcc.Tabs([
+                dcc.Tab(label="Documents", children=documents_subtab),
+                dcc.Tab(label="Chunks", children=chunks_subtab),
+                dcc.Tab(label="Taxonomy Combinations", children=taxonomy_subtab),
+                dcc.Tab(label="Keywords", children=keywords_subtab),
+                dcc.Tab(label="Named Entities", children=entities_subtab)
+            ], id="sources-subtabs", className="custom-tabs"),
+        ], id="sources-content-container"),
         
         # Sources-specific About modal
         dbc.Modal([
@@ -2073,7 +2067,7 @@ def register_sources_tab_callbacks(app):
     @app.callback(
         [
             Output("sources-result-stats", "children"),
-            Output("sources-subtabs", "children")
+            Output("sources-content-container", "children")
         ],
         [
             Input("sources-filter-button", "n_clicks")
@@ -2148,13 +2142,13 @@ def register_sources_tab_callbacks(app):
                       style={'text-align': 'center', 'color': '#999', 'padding': '40px', 'font-style': 'italic'})
             ])
             
-            placeholder_tabs = [
+            placeholder_tabs = dcc.Tabs([
                 dcc.Tab(label="Documents", children=placeholder_content),
                 dcc.Tab(label="Chunks", children=placeholder_content),
                 dcc.Tab(label="Taxonomy Combinations", children=placeholder_content),
                 dcc.Tab(label="Keywords", children=placeholder_content),
                 dcc.Tab(label="Named Entities", children=placeholder_content)
-            ]
+            ], id="sources-subtabs", className="custom-tabs")
             
             return stats_html, placeholder_tabs
         
@@ -2259,16 +2253,25 @@ def register_sources_tab_callbacks(app):
             entity_db_breakdown
         )
         
-        updated_tabs = [
-            dcc.Tab(label="Documents", children=documents_subtab),
-            dcc.Tab(label="Chunks", children=chunks_subtab),
-            dcc.Tab(label="Taxonomy Combinations", children=taxonomy_subtab),
-            dcc.Tab(label="Keywords", children=keywords_subtab),
-            dcc.Tab(label="Named Entities", children=entities_subtab)
-        ]
+        # Wrap the tabs in a loading component to show radar pulse
+        updated_tabs_content = dcc.Loading(
+            id="sources-data-loading",
+            type="circle",
+            color="#13376f",
+            className="radar-loading",
+            children=[
+                dcc.Tabs([
+                    dcc.Tab(label="Documents", children=documents_subtab),
+                    dcc.Tab(label="Chunks", children=chunks_subtab),
+                    dcc.Tab(label="Taxonomy Combinations", children=taxonomy_subtab),
+                    dcc.Tab(label="Keywords", children=keywords_subtab),
+                    dcc.Tab(label="Named Entities", children=entities_subtab)
+                ], id="sources-subtabs", className="custom-tabs")
+            ]
+        )
         
         # Return updated content
-        return stats_html, updated_tabs
+        return stats_html, updated_tabs_content
     
     # Callback to toggle the Documents About modal
     @app.callback(
