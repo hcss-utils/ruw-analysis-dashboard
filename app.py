@@ -495,13 +495,13 @@ def create_dash_app() -> dash.Dash:
     # Main layout with tabs
     app.layout = html.Div([
         header,
-        dcc.Tabs([
-            dcc.Tab(label="Explore", children=explore_tab, className="custom-tab"),
-            dcc.Tab(label="Search", children=search_tab, className="custom-tab"),
-            dcc.Tab(label="Compare", children=compare_tab, className="custom-tab"),
-            dcc.Tab(label="Burstiness", children=burstiness_tab, className="custom-tab"),
-            dcc.Tab(label="Sources", children=sources_tab, className="custom-tab"),
-        ], className="slimmer-tabs"),
+        dcc.Tabs(id="tabs", children=[
+            dcc.Tab(label="Explore", value="tab-explore", children=explore_tab, className="custom-tab"),
+            dcc.Tab(label="Search", value="tab-search", children=search_tab, className="custom-tab"),
+            dcc.Tab(label="Compare", value="tab-compare", children=compare_tab, className="custom-tab"),
+            dcc.Tab(label="Burstiness", value="tab-burstiness", children=burstiness_tab, className="custom-tab"),
+            dcc.Tab(label="Sources", value="tab-sources", children=sources_tab, className="custom-tab"),
+        ], value="tab-explore", className="slimmer-tabs"),
         # About modal
         about_modal,
         # Download components
