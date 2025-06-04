@@ -631,3 +631,69 @@ body:has(div[data-dash-is-loading="true"]) {
     letter-spacing: 0.5px;
 }
 
+/* =========== Radar Pulse Animation =========== */
+/* Simple radar pulse for inline loading indicators */
+.radar-pulse {
+    position: relative;
+    width: 80px;
+    height: 80px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Center dot */
+.radar-pulse::before {
+    content: '';
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background-color: #13376f;
+    border-radius: 50%;
+    z-index: 3;
+}
+
+/* First ring */
+.radar-pulse::after {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border: 2px solid #13376f;
+    border-radius: 50%;
+    animation: radar-pulse-ring 2s infinite ease-out;
+}
+
+/* Additional rings using child divs */
+.radar-pulse .ring-1,
+.radar-pulse .ring-2 {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border: 2px solid #13376f;
+    border-radius: 50%;
+    animation: radar-pulse-ring 2s infinite ease-out;
+}
+
+.radar-pulse .ring-1 {
+    animation-delay: 0.67s;
+}
+
+.radar-pulse .ring-2 {
+    animation-delay: 1.33s;
+}
+
+@keyframes radar-pulse-ring {
+    0% {
+        width: 20px;
+        height: 20px;
+        opacity: 1;
+    }
+    100% {
+        width: 80px;
+        height: 80px;
+        opacity: 0;
+    }
+}
+
