@@ -41,21 +41,36 @@ def convert_keywords_to_comparison_format(keywords_data: Dict) -> pd.DataFrame:
     Returns:
         pd.DataFrame with category, subcategory, sub_subcategory, and count columns
     """
+    logging.info(f"Converting keywords data: {keywords_data.keys() if keywords_data else 'None'}")
+    
     if not keywords_data or 'top_keywords' not in keywords_data:
+        logging.warning("Keywords data missing or no top_keywords key")
         return pd.DataFrame()
     
-    # Create DataFrame from top keywords
+    # Check if we have data
+    labels = keywords_data['top_keywords'].get('labels', [])
+    values = keywords_data['top_keywords'].get('values', [])
+    
+    logging.info(f"Found {len(labels)} keywords to convert")
+    
+    if not labels or not values:
+        logging.warning("No keyword labels or values found")
+        return pd.DataFrame()
+    
+    # Create DataFrame from top keywords - use keywords as categories for comparison
+    # This allows comparing the frequency of specific keywords between datasets
     rows = []
-    for i, (keyword, count) in enumerate(zip(keywords_data['top_keywords']['labels'][:50], 
-                                           keywords_data['top_keywords']['values'][:50])):
+    for i, (keyword, count) in enumerate(zip(labels[:10], values[:10])):
         rows.append({
-            'category': 'Keywords',
-            'subcategory': keyword,
+            'category': keyword,  # Use keyword as category for comparison
+            'subcategory': 'Frequency',  # Simple subcategory
             'sub_subcategory': '',
             'count': count
         })
     
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+    logging.info(f"Converted keywords to DataFrame with {len(df)} rows")
+    return df
 
 
 def convert_entities_to_comparison_format(entities_data: Dict, entity_type: str = 'ALL') -> pd.DataFrame:
@@ -69,45 +84,154 @@ def convert_entities_to_comparison_format(entities_data: Dict, entity_type: str 
     Returns:
         pd.DataFrame with category, subcategory, sub_subcategory, and count columns
     """
-    if not entities_data or 'top_entities' not in entities_data:
+    logging.info(f"Converting entities data: {entities_data.keys() if entities_data else 'None'}")
+    logging.info(f"Entity type filter: {entity_type}")
+    
+    if not entities_data:
+        logging.warning("No entities data provided")
         return pd.DataFrame()
     
-    # Create DataFrame from top entities
     rows = []
     
-    # If filtering by entity type, use filtered data
-    if entity_type != 'ALL' and 'entities_by_type' in entities_data:
-        entity_types = entities_data['entities_by_type']
-        if entity_type in entity_types:
-            type_data = entity_types[entity_type]
-            for entity, count in zip(type_data['entities'][:50], type_data['counts'][:50]):
+    # For comparison, we want to use entities as categories
+    if 'top_entities' in entities_data:
+        entity_labels = entities_data['top_entities'].get('labels', [])
+        entity_types = entities_data['top_entities'].get('types', [])
+        entity_values = entities_data['top_entities'].get('values', [])
+        
+        logging.info(f"Found {len(entity_labels)} top entities")
+        
+        if entity_type == 'ALL':
+            # Show top 10 entities across all types
+            for i, (entity, ent_type, count) in enumerate(zip(entity_labels[:10], entity_types[:10], entity_values[:10])):
                 rows.append({
-                    'category': f'{entity_type} Entities',
-                    'subcategory': entity,
+                    'category': entity,  # Use entity name as category for comparison
+                    'subcategory': ent_type,  # Entity type as subcategory
                     'sub_subcategory': '',
                     'count': count
                 })
-    else:
-        # Use all entities grouped by type
-        if 'entities_by_type' in entities_data:
-            for ent_type, type_data in entities_data['entities_by_type'].items():
-                for entity, count in zip(type_data['entities'][:10], type_data['counts'][:10]):
-                    rows.append({
-                        'category': f'{ent_type} Entities',
-                        'subcategory': entity,
-                        'sub_subcategory': '',
-                        'count': count
-                    })
         else:
-            # Fallback to top entities without type grouping
-            for i, (entity, count) in enumerate(zip(entities_data['top_entities']['labels'][:50], 
-                                                   entities_data['top_entities']['values'][:50])):
+            # Filter by specific entity type
+            filtered_entities = [(label, ent_type, value) for label, ent_type, value in 
+                               zip(entity_labels, entity_types, entity_values) 
+                               if ent_type == entity_type][:10]
+            
+            for entity, ent_type, count in filtered_entities:
                 rows.append({
-                    'category': 'Named Entities',
-                    'subcategory': entity,
+                    'category': entity,  # Use entity name as category
+                    'subcategory': ent_type,  # Entity type as subcategory
                     'sub_subcategory': '',
                     'count': count
                 })
+    
+    # If we want to compare entity types instead of individual entities
+    elif 'entity_types' in entities_data and entity_type == 'ALL':
+        # Use entity types as categories
+        entity_type_labels = entities_data['entity_types'].get('labels', [])
+        entity_type_counts = entities_data['entity_types'].get('counts', [])
+        
+        for ent_type, count in zip(entity_type_labels, entity_type_counts):
+            rows.append({
+                'category': f'{ent_type} Entities',
+                'subcategory': 'Count',
+                'sub_subcategory': '',
+                'count': count
+            })
+    
+    df = pd.DataFrame(rows)
+    logging.info(f"Converted entities to DataFrame with {len(df)} rows")
+    return df
+
+
+def convert_keywords_to_comparison_format_unified(keywords_data: Dict, unified_keywords: List[str]) -> pd.DataFrame:
+    """
+    Convert keywords data to comparison format using a unified set of keywords.
+    
+    Args:
+        keywords_data: Keywords data dictionary
+        unified_keywords: List of keywords to include (union from both datasets)
+        
+    Returns:
+        pd.DataFrame with category, subcategory, sub_subcategory, and count columns
+    """
+    if not keywords_data or 'top_keywords' not in keywords_data:
+        # Return empty rows for all unified keywords
+        rows = []
+        for keyword in unified_keywords:
+            rows.append({
+                'category': keyword,
+                'subcategory': 'Frequency',
+                'sub_subcategory': '',
+                'count': 0
+            })
+        return pd.DataFrame(rows)
+    
+    # Create a mapping of keyword to count
+    keyword_counts = dict(zip(
+        keywords_data['top_keywords'].get('labels', []),
+        keywords_data['top_keywords'].get('values', [])
+    ))
+    
+    # Create rows for all unified keywords
+    rows = []
+    for keyword in unified_keywords:
+        rows.append({
+            'category': keyword,
+            'subcategory': 'Frequency',
+            'sub_subcategory': '',
+            'count': keyword_counts.get(keyword, 0)  # Use 0 if keyword not in this dataset
+        })
+    
+    return pd.DataFrame(rows)
+
+
+def convert_entities_to_comparison_format_unified(entities_data: Dict, unified_entities: List[Tuple[str, str]], entity_type_filter: str = 'ALL') -> pd.DataFrame:
+    """
+    Convert named entities data to comparison format using a unified set of entities.
+    
+    Args:
+        entities_data: Named entities data dictionary
+        unified_entities: List of (entity, type) tuples to include
+        entity_type_filter: Entity type filter
+        
+    Returns:
+        pd.DataFrame with category, subcategory, sub_subcategory, and count columns
+    """
+    if not entities_data or 'top_entities' not in entities_data:
+        # Return empty rows for all unified entities
+        rows = []
+        for entity, ent_type in unified_entities:
+            if entity_type_filter == 'ALL' or ent_type == entity_type_filter:
+                rows.append({
+                    'category': entity,
+                    'subcategory': ent_type,
+                    'sub_subcategory': '',
+                    'count': 0
+                })
+        return pd.DataFrame(rows)
+    
+    # Create a mapping of (entity, type) to count
+    entity_counts = {}
+    labels = entities_data['top_entities'].get('labels', [])
+    types = entities_data['top_entities'].get('types', [])
+    values = entities_data['top_entities'].get('values', [])
+    
+    for i in range(len(labels)):
+        entity = labels[i]
+        ent_type = types[i] if i < len(types) else 'Unknown'
+        count = values[i] if i < len(values) else 0
+        entity_counts[(entity, ent_type)] = count
+    
+    # Create rows for all unified entities
+    rows = []
+    for entity, ent_type in unified_entities:
+        if entity_type_filter == 'ALL' or ent_type == entity_type_filter:
+            rows.append({
+                'category': entity,
+                'subcategory': ent_type,
+                'sub_subcategory': '',
+                'count': entity_counts.get((entity, ent_type), 0)  # Use 0 if not in this dataset
+            })
     
     return pd.DataFrame(rows)
 
@@ -543,6 +667,8 @@ def register_compare_callbacks(app):
             tuple: (df_a, df_b, stats_a, stats_b)
         """
         logging.info(f"Storing comparison data for {data_type}...")
+        logging.info(f"Slice A filters: lang={lang_a}, db={db_a}, source={source_a}")
+        logging.info(f"Slice B filters: lang={lang_b}, db={db_b}, source={source_b}")
         if not n_clicks:
             return [], [], "", ""
         
@@ -563,16 +689,47 @@ def register_compare_callbacks(app):
             # Fetch keywords data
             keywords_a = fetch_keywords_data(lang_a, db_a, source_a, date_range_a)
             keywords_b = fetch_keywords_data(lang_b, db_b, source_b, date_range_b)
-            # Convert to comparison format
-            df_a = convert_keywords_to_comparison_format(keywords_a)
-            df_b = convert_keywords_to_comparison_format(keywords_b)
+            
+            logging.info(f"Fetched keywords data - Slice A: {keywords_a.keys() if keywords_a else 'None'}")
+            logging.info(f"Fetched keywords data - Slice B: {keywords_b.keys() if keywords_b else 'None'}")
+            
+            # Get the union of top keywords from both datasets for comparison
+            all_keywords = set()
+            if keywords_a and 'top_keywords' in keywords_a:
+                all_keywords.update(keywords_a['top_keywords']['labels'][:20])
+            if keywords_b and 'top_keywords' in keywords_b:
+                all_keywords.update(keywords_b['top_keywords']['labels'][:20])
+            
+            # Convert to comparison format with unified keywords
+            df_a = convert_keywords_to_comparison_format_unified(keywords_a, list(all_keywords)[:15])
+            df_b = convert_keywords_to_comparison_format_unified(keywords_b, list(all_keywords)[:15])
+            
+            logging.info(f"Converted keywords - Slice A: {len(df_a)} rows, Slice B: {len(df_b)} rows")
         elif data_type == 'named_entities':
             # Fetch named entities data
             entities_a = fetch_named_entities_data(lang_a, db_a, source_a, date_range_a)
             entities_b = fetch_named_entities_data(lang_b, db_b, source_b, date_range_b)
-            # Convert to comparison format with optional entity type filter
-            df_a = convert_entities_to_comparison_format(entities_a, entity_type)
-            df_b = convert_entities_to_comparison_format(entities_b, entity_type)
+            
+            logging.info(f"Fetched entities data - Slice A: {entities_a.keys() if entities_a else 'None'}")
+            logging.info(f"Fetched entities data - Slice B: {entities_b.keys() if entities_b else 'None'}")
+            
+            # Get the union of top entities from both datasets for comparison
+            all_entities = set()
+            if entities_a and 'top_entities' in entities_a:
+                # Add tuples of (entity, type) to handle entity types
+                for i in range(min(20, len(entities_a['top_entities']['labels']))):
+                    all_entities.add((entities_a['top_entities']['labels'][i], 
+                                    entities_a['top_entities']['types'][i] if i < len(entities_a['top_entities']['types']) else 'Unknown'))
+            if entities_b and 'top_entities' in entities_b:
+                for i in range(min(20, len(entities_b['top_entities']['labels']))):
+                    all_entities.add((entities_b['top_entities']['labels'][i], 
+                                    entities_b['top_entities']['types'][i] if i < len(entities_b['top_entities']['types']) else 'Unknown'))
+            
+            # Convert to comparison format with unified entities
+            df_a = convert_entities_to_comparison_format_unified(entities_a, list(all_entities)[:15], entity_type)
+            df_b = convert_entities_to_comparison_format_unified(entities_b, list(all_entities)[:15], entity_type)
+            
+            logging.info(f"Converted entities - Slice A: {len(df_a)} rows, Slice B: {len(df_b)} rows")
         else:
             df_a = pd.DataFrame()
             df_b = pd.DataFrame()
@@ -645,6 +802,18 @@ def register_compare_callbacks(app):
         ])
         
         logging.info(f"Comparison data stored for {data_type}. Slice A: {total_count_a} items. Slice B: {total_count_b} items.")
+        
+        # Debug: Log the actual data being returned
+        if not df_a.empty:
+            logging.info(f"DataFrame A sample:\n{df_a.head()}")
+        else:
+            logging.info("DataFrame A is empty!")
+            
+        if not df_b.empty:
+            logging.info(f"DataFrame B sample:\n{df_b.head()}")
+        else:
+            logging.info("DataFrame B is empty!")
+            
         return (
             df_a.to_dict('records') if not df_a.empty else [],
             df_b.to_dict('records') if not df_b.empty else [],
@@ -767,6 +936,13 @@ def register_compare_callbacks(app):
         # Convert to DataFrames
         df_a = pd.DataFrame(data_a)
         df_b = pd.DataFrame(data_b)
+        
+        logging.info(f"DataFrame A shape: {df_a.shape}, columns: {df_a.columns.tolist() if not df_a.empty else 'empty'}")
+        logging.info(f"DataFrame B shape: {df_b.shape}, columns: {df_b.columns.tolist() if not df_b.empty else 'empty'}")
+        if not df_a.empty:
+            logging.info(f"DataFrame A first 5 rows:\n{df_a.head()}")
+        if not df_b.empty:
+            logging.info(f"DataFrame B first 5 rows:\n{df_b.head()}")
         
         # If either is empty, show message
         if df_a.empty or df_b.empty:

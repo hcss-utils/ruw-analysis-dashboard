@@ -42,14 +42,22 @@ def create_comparison_plot(
     Returns:
         tuple: (fig_a, fig_b) two plotly figures or (fig, fig) for single-figure types
     """
+    logging.info(f"create_comparison_plot called with plot_type={plot_type}")
+    
     # Convert to DataFrame if necessary
     if not isinstance(df_a, pd.DataFrame):
         df_a = pd.DataFrame(df_a)
+        logging.info(f"Converted list to DataFrame A: shape={df_a.shape}")
     if not isinstance(df_b, pd.DataFrame):
         df_b = pd.DataFrame(df_b)
+        logging.info(f"Converted list to DataFrame B: shape={df_b.shape}")
+    
+    logging.info(f"DataFrame A shape: {df_a.shape}, columns: {df_a.columns.tolist() if not df_a.empty else 'empty'}")
+    logging.info(f"DataFrame B shape: {df_b.shape}, columns: {df_b.columns.tolist() if not df_b.empty else 'empty'}")
     
     # Empty dataframe check
     if df_a.empty or df_b.empty:
+        logging.warning(f"Empty dataframe detected! df_a.empty={df_a.empty}, df_b.empty={df_b.empty}")
         empty_fig = go.Figure().update_layout(title="No data available for comparison")
         return empty_fig, empty_fig
     
@@ -57,9 +65,18 @@ def create_comparison_plot(
     cat_a = df_a.groupby('category')['count'].sum().reset_index()
     cat_b = df_b.groupby('category')['count'].sum().reset_index()
     
+    logging.info(f"Grouped categories A: {len(cat_a)} categories")
+    logging.info(f"Grouped categories B: {len(cat_b)} categories")
+    if not cat_a.empty:
+        logging.info(f"Categories A sample:\n{cat_a.head()}")
+    if not cat_b.empty:
+        logging.info(f"Categories B sample:\n{cat_b.head()}")
+    
     # For visualizations that need category percentages within each slice
     total_a = cat_a['count'].sum()
     total_b = cat_b['count'].sum()
+    
+    logging.info(f"Total counts: A={total_a}, B={total_b}")
     
     cat_a['percentage'] = (cat_a['count'] / total_a * 100).round(1) if total_a > 0 else 0
     cat_b['percentage'] = (cat_b['count'] / total_b * 100).round(1) if total_b > 0 else 0
@@ -580,6 +597,8 @@ def _create_diff_means_chart(
     Returns:
         Tuple[go.Figure, go.Figure]: Two complementary figures
     """
+    logging.info(f"_create_diff_means_chart: cat_a shape={cat_a.shape}, cat_b shape={cat_b.shape}")
+    
     # Prepare data - merge and calculate differences
     merged = pd.merge(
         cat_a[['category', 'percentage', 'count']],
@@ -588,6 +607,11 @@ def _create_diff_means_chart(
         how='outer',
         suffixes=(f'_{slice_a_name.lower()}', f'_{slice_b_name.lower()}')
     ).fillna(0)
+    
+    logging.info(f"Merged dataframe shape: {merged.shape}")
+    if not merged.empty:
+        logging.info(f"Merged columns: {merged.columns.tolist()}")
+        logging.info(f"Merged sample:\n{merged.head()}")
     
     # Calculate difference (B - A)
     merged['diff'] = merged[f'percentage_{slice_b_name.lower()}'] - merged[f'percentage_{slice_a_name.lower()}']
