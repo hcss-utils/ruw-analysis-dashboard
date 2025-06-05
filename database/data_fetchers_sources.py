@@ -1725,11 +1725,10 @@ def fetch_named_entities_data(
             
             # Get total unique entities and chunk statistics - ONLY from relevant chunks
             # Named entities are stored as JSONB array directly: [{"text": "...", "label": "..."}]
+            # OPTIMIZATION: Use sampling for large datasets to avoid timeout
             stats_query = f"""
-            WITH entity_data AS (
-                SELECT 
-                    dsc.id as chunk_id,
-                    jsonb_array_elements(dsc.named_entities) as entity
+            WITH sampled_chunks AS (
+                SELECT dsc.id, dsc.named_entities
                 FROM document_section_chunk dsc
                 JOIN document_section ds ON dsc.document_section_id = ds.id
                 JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
@@ -1738,6 +1737,13 @@ def fetch_named_entities_data(
                     AND jsonb_typeof(dsc.named_entities) = 'array'
                     AND jsonb_array_length(dsc.named_entities) > 0
                 {filter_sql}
+                LIMIT 10000  -- Sample for performance
+            ),
+            entity_data AS (
+                SELECT 
+                    sc.id as chunk_id,
+                    jsonb_array_elements(sc.named_entities) as entity
+                FROM sampled_chunks sc
             )
             SELECT 
                 COUNT(DISTINCT entity->>'text') as unique_entities,
@@ -1750,10 +1756,10 @@ def fetch_named_entities_data(
             stats_df = pd.read_sql(text(stats_query), conn, params=params)
             
             # Get top entities by frequency - ONLY from relevant chunks
+            # OPTIMIZATION: Use sampling for performance
             top_entities_query = f"""
-            WITH entity_data AS (
-                SELECT 
-                    jsonb_array_elements(dsc.named_entities) as entity
+            WITH sampled_chunks AS (
+                SELECT dsc.named_entities
                 FROM document_section_chunk dsc
                 JOIN document_section ds ON dsc.document_section_id = ds.id
                 JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
@@ -1762,6 +1768,12 @@ def fetch_named_entities_data(
                     AND jsonb_typeof(dsc.named_entities) = 'array'
                     AND jsonb_array_length(dsc.named_entities) > 0
                 {filter_sql}
+                LIMIT 5000  -- Sample for performance
+            ),
+            entity_data AS (
+                SELECT 
+                    jsonb_array_elements(sc.named_entities) as entity
+                FROM sampled_chunks sc
             )
             SELECT 
                 entity->>'text' as entity_text,
@@ -1776,10 +1788,10 @@ def fetch_named_entities_data(
             top_entities_df = pd.read_sql(text(top_entities_query), conn, params=params)
             
             # Get entity types distribution - ONLY from relevant chunks
+            # OPTIMIZATION: Use sampling for performance
             entity_types_query = f"""
-            WITH entity_data AS (
-                SELECT 
-                    jsonb_array_elements(dsc.named_entities) as entity
+            WITH sampled_chunks AS (
+                SELECT dsc.named_entities
                 FROM document_section_chunk dsc
                 JOIN document_section ds ON dsc.document_section_id = ds.id
                 JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
@@ -1788,6 +1800,12 @@ def fetch_named_entities_data(
                     AND jsonb_typeof(dsc.named_entities) = 'array'
                     AND jsonb_array_length(dsc.named_entities) > 0
                 {filter_sql}
+                LIMIT 5000  -- Sample for performance
+            ),
+            entity_data AS (
+                SELECT 
+                    jsonb_array_elements(sc.named_entities) as entity
+                FROM sampled_chunks sc
             )
             SELECT 
                 entity->>'label' as entity_type,

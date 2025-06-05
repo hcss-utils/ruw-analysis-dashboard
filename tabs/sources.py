@@ -1938,32 +1938,59 @@ def create_sources_tab_layout(db_options: List, min_date: datetime = None, max_d
     sources_tab = html.Div([
         corpus_overview,
         
-        # Loading message container (outside of dcc.Loading to avoid default text)
+        # Loading message overlay container
         html.Div([
             html.Div([
-                html.P("Preparing data visualizations... 🎉", 
-                       className="text-center mt-3", 
-                       style={'color': '#666', 'font-weight': 'bold'}),
-                html.P("(Our algorithms are doing their best impression of a speed reader!)", 
-                       className="text-muted text-center small"),
-                html.P("Did you know? The complete corpus contains more words than the entire Harry Potter series × 100! ⚡", 
-                       className="text-info text-center small mt-3",
-                       style={'font-style': 'italic'})
+                html.Div([
+                    html.P("Preparing data visualizations... 🎉", 
+                           className="text-center mt-3", 
+                           style={'color': '#13376f', 'font-weight': 'bold', 'font-size': '18px'}),
+                    html.P("(Our algorithms are doing their best impression of a speed reader!)", 
+                           className="text-muted text-center", 
+                           style={'font-size': '14px'}),
+                    html.P("Did you know? The complete corpus contains more words than the entire Harry Potter series × 100! ⚡", 
+                           className="text-info text-center mt-3",
+                           style={'font-style': 'italic', 'font-size': '13px'})
+                ], style={
+                    'background': 'rgba(255, 255, 255, 0.98)',
+                    'border': '2px solid #13376f',
+                    'border-radius': '12px',
+                    'padding': '30px',
+                    'box-shadow': '0 4px 20px rgba(0, 0, 0, 0.15)',
+                    'max-width': '500px',
+                    'margin': '0 auto',
+                    'position': 'relative',
+                    'z-index': '1000'
+                })
             ], id="sources-loading-messages", 
-               style={'padding': '20px', 'background': '#f8f9fa', 'border-radius': '8px', 
-                      'margin-bottom': '20px', 'display': 'none'})
+               style={
+                   'position': 'fixed',
+                   'top': '50%',
+                   'left': '50%',
+                   'transform': 'translate(-50%, -50%)',
+                   'display': 'none',
+                   'z-index': '1000'
+               })
         ]),
         
-        # Wrap only the content in a loading component
-        dcc.Loading(
-            id="sources-main-loading",
-            type="default",  # This triggers the horizontal radar sweep
-            color="#13376f",
-            children=[
-                # Content container that gets updated
-                html.Div(id="sources-content-container", style={'min-height': '400px'})
-            ]
-        ),
+        # Main content area with loading wrapper
+        html.Div([
+            # Stats container (will be updated by callback)
+            html.Div(id="sources-stats-display", style={'margin-bottom': '10px'}),
+            
+            # Wrap content in loading component
+            dcc.Loading(
+                id="sources-main-loading",
+                type="default",  # This triggers the horizontal radar sweep
+                color="#13376f",
+                children=[
+                    # Content container that gets updated
+                    html.Div(id="sources-content-container", style={'min-height': '400px'})
+                ],
+                # Keep loading active while parent is updating
+                parent_className="sources-loading-parent"
+            )
+        ]),
         
         # Sources-specific About modal
         dbc.Modal([
@@ -2071,8 +2098,14 @@ def register_sources_tab_callbacks(app):
         function(n_clicks, tab_value) {
             // Show loading messages when Sources tab becomes active or button is clicked
             if (tab_value === 'tab-sources' || n_clicks > 0) {
-                return {'padding': '20px', 'background': '#f8f9fa', 'border-radius': '8px', 
-                        'margin-bottom': '20px', 'display': 'block'};
+                return {
+                    'position': 'fixed',
+                    'top': '50%',
+                    'left': '50%',
+                    'transform': 'translate(-50%, -50%)',
+                    'display': 'block',
+                    'z-index': '1000'
+                };
             }
             return dash_clientside.no_update;
         }
@@ -2086,7 +2119,7 @@ def register_sources_tab_callbacks(app):
     # Main callback for updating sources tab content
     @app.callback(
         [
-            Output("sources-result-stats", "children"),
+            Output("sources-stats-display", "children"),
             Output("sources-content-container", "children"),
             Output("sources-loading-messages", "style")
         ],
