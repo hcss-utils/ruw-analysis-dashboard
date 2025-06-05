@@ -1938,40 +1938,30 @@ def create_sources_tab_layout(db_options: List, min_date: datetime = None, max_d
     sources_tab = html.Div([
         corpus_overview,
         
-        # Add stats container
-        html.Div(id="sources-result-stats", className="mb-3"),
+        # Loading message container (outside of dcc.Loading to avoid default text)
+        html.Div([
+            html.Div([
+                html.P("Preparing data visualizations... 🎉", 
+                       className="text-center mt-3", 
+                       style={'color': '#666', 'font-weight': 'bold'}),
+                html.P("(Our algorithms are doing their best impression of a speed reader!)", 
+                       className="text-muted text-center small"),
+                html.P("Did you know? The complete corpus contains more words than the entire Harry Potter series × 100! ⚡", 
+                       className="text-info text-center small mt-3",
+                       style={'font-style': 'italic'})
+            ], id="sources-loading-messages", 
+               style={'padding': '20px', 'background': '#f8f9fa', 'border-radius': '8px', 
+                      'margin-bottom': '20px', 'display': 'none'})
+        ]),
         
-        # Wrap everything in a loading component
+        # Wrap only the content in a loading component
         dcc.Loading(
             id="sources-main-loading",
             type="default",  # This triggers the horizontal radar sweep
             color="#13376f",
             children=[
-                # Loading message container
-                html.Div([
-                    html.Div([
-                        html.P("Preparing data visualizations... 🎉", 
-                               className="text-center mt-3", 
-                               style={'color': '#666', 'font-weight': 'bold'}),
-                        html.P("(Our algorithms are doing their best impression of a speed reader!)", 
-                               className="text-muted text-center small"),
-                        html.P("Did you know? The complete corpus contains more words than the entire Harry Potter series × 100! ⚡", 
-                               className="text-info text-center small mt-3",
-                               style={'font-style': 'italic'})
-                    ], id="sources-loading-messages", 
-                       style={'padding': '20px', 'background': '#f8f9fa', 'border-radius': '8px', 
-                              'margin-bottom': '20px', 'display': 'none'})
-                ]),
-                
                 # Content container that gets updated
-                html.Div(id="sources-content-container", children=[
-                    # Initial placeholder content
-                    html.Div([
-                        html.P("Loading data...", 
-                               className="text-center text-muted mt-5", 
-                               style={'font-size': '18px'})
-                    ], style={'min-height': '400px'})
-                ])
+                html.Div(id="sources-content-container", style={'min-height': '400px'})
             ]
         ),
         
@@ -2078,11 +2068,9 @@ def register_sources_tab_callbacks(app):
     # Clientside callback to show loading messages immediately
     app.clientside_callback(
         """
-        function(n_clicks, active_tab) {
-            console.log('Sources clientside callback - active_tab:', active_tab, 'n_clicks:', n_clicks);
+        function(n_clicks, tab_value) {
             // Show loading messages when Sources tab becomes active or button is clicked
-            if (active_tab === 'tab-sources') {
-                console.log('Showing loading messages for Sources tab');
+            if (tab_value === 'tab-sources' || n_clicks > 0) {
                 return {'padding': '20px', 'background': '#f8f9fa', 'border-radius': '8px', 
                         'margin-bottom': '20px', 'display': 'block'};
             }
@@ -2090,8 +2078,8 @@ def register_sources_tab_callbacks(app):
         }
         """,
         Output("sources-loading-messages", "style", allow_duplicate=True),
-        [Input("sources-filter-button", "n_clicks"), Input("tabs", "active_tab")],
-        prevent_initial_call=False
+        [Input("sources-filter-button", "n_clicks"), Input("tabs", "value")],
+        prevent_initial_call='initial_duplicate'
     )
     
     
@@ -2104,7 +2092,7 @@ def register_sources_tab_callbacks(app):
         ],
         [
             Input("sources-filter-button", "n_clicks"),
-            Input("tabs", "active_tab")  # Add tabs input to trigger on tab change
+            Input("tabs", "value")  # Add tabs input to trigger on tab change
         ],
         [
             State("sources-language-dropdown", "value"),
@@ -2136,7 +2124,10 @@ def register_sources_tab_callbacks(app):
         # Check if Sources tab is active
         if active_tab != "tab-sources":
             # Don't load data if not on Sources tab
+            logging.info("Not on Sources tab, skipping update")
             return dash.no_update, dash.no_update, dash.no_update
+        
+        logging.info("Sources tab is active, proceeding with data fetch")
         
         # Process filters - set defaults if None for initial load
         if lang_val is None:
@@ -2283,6 +2274,7 @@ def register_sources_tab_callbacks(app):
         ], id="sources-subtabs", className="custom-tabs")
         
         # Return updated content with hidden loading messages
+        logging.info("Sources tab data ready, returning content")
         return stats_html, updated_tabs_content, {'display': 'none'}
     
     # Callback to toggle the Documents About modal

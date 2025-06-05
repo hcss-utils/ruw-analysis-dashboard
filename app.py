@@ -62,16 +62,8 @@ def create_simple_sources_tab(db_options, min_date, max_date):
 # Simple placeholder for sources callbacks
 def register_simple_sources_callbacks(app):
     """Register minimal callbacks for the sources tab"""
-    @app.callback(
-        dash.Output("sources-result-stats", "children"),
-        dash.Input("sources-filter-button", "n_clicks"),
-        prevent_initial_call=True
-    )
-    def update_sources_stats(n_clicks):
-        if not n_clicks:
-            return dash.no_update
-        
-        return html.Div("Filters applied")
+    # No callbacks needed for the simple placeholder
+    pass
 
 
 def create_dash_app() -> dash.Dash:
@@ -495,13 +487,13 @@ def create_dash_app() -> dash.Dash:
     # Main layout with tabs
     app.layout = html.Div([
         header,
-        dcc.Tabs(id="tabs", children=[
+        dcc.Tabs(id="tabs", value="tab-explore", children=[
             dcc.Tab(label="Explore", value="tab-explore", children=explore_tab, className="custom-tab"),
             dcc.Tab(label="Search", value="tab-search", children=search_tab, className="custom-tab"),
             dcc.Tab(label="Compare", value="tab-compare", children=compare_tab, className="custom-tab"),
             dcc.Tab(label="Burstiness", value="tab-burstiness", children=burstiness_tab, className="custom-tab"),
             dcc.Tab(label="Sources", value="tab-sources", children=sources_tab, className="custom-tab"),
-        ], value="tab-explore", className="slimmer-tabs"),
+        ], className="slimmer-tabs"),
         # About modal
         about_modal,
         # Download components
