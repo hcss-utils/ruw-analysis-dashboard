@@ -34,7 +34,7 @@ from utils.keyword_mapping import map_keyword, load_mapping_files
 
 def convert_keywords_to_comparison_format(keywords_data: Dict) -> pd.DataFrame:
     """
-    Convert keywords data to comparison format.
+    Convert keywords data to comparison format with hierarchical structure.
     
     Args:
         keywords_data: Keywords data dictionary
@@ -58,25 +58,117 @@ def convert_keywords_to_comparison_format(keywords_data: Dict) -> pd.DataFrame:
         logging.warning("No keyword labels or values found")
         return pd.DataFrame()
     
-    # Create DataFrame from top keywords - use keywords as categories for comparison
-    # This allows comparing the frequency of specific keywords between datasets
+    # Create hierarchical categorization for keywords
+    def categorize_keyword(keyword: str) -> Tuple[str, str, str]:
+        """Categorize keyword into hierarchical structure."""
+        kw_lower = keyword.lower()
+        
+        # Military & Operations
+        if any(term in kw_lower for term in ['military', 'army', 'force', 'defense', 'weapon', 'missile', 
+                                              'tank', 'aircraft', 'naval', 'combat', 'soldier', 'troops']):
+            category = 'Military & Operations'
+            if any(term in kw_lower for term in ['weapon', 'missile', 'tank', 'aircraft']):
+                subcategory = 'Equipment & Weapons'
+            elif any(term in kw_lower for term in ['soldier', 'troops', 'personnel']):
+                subcategory = 'Personnel'
+            else:
+                subcategory = 'Operations'
+            sub_subcategory = keyword
+            
+        # Geographic & Locations
+        elif any(term in kw_lower for term in ['russia', 'ukraine', 'moscow', 'kyiv', 'kiev', 'donbas', 
+                                                'crimea', 'region', 'city', 'territory']):
+            category = 'Geographic & Locations'
+            if any(term in kw_lower for term in ['russia', 'ukraine']):
+                subcategory = 'Countries'
+            elif any(term in kw_lower for term in ['moscow', 'kyiv', 'kiev']):
+                subcategory = 'Cities'
+            else:
+                subcategory = 'Regions'
+            sub_subcategory = keyword
+            
+        # Political & Leadership
+        elif any(term in kw_lower for term in ['putin', 'zelensky', 'minister', 'president', 'government',
+                                                'policy', 'politics', 'diplomatic', 'negotiations']):
+            category = 'Political & Leadership'
+            if any(term in kw_lower for term in ['putin', 'zelensky', 'president', 'minister']):
+                subcategory = 'Leaders & Officials'
+            else:
+                subcategory = 'Policy & Diplomacy'
+            sub_subcategory = keyword
+            
+        # Media & Information
+        elif any(term in kw_lower for term in ['news', 'media', 'report', 'telegram', 'twitter',
+                                                'propaganda', 'information']):
+            category = 'Media & Information'
+            if any(term in kw_lower for term in ['telegram', 'twitter', 'social']):
+                subcategory = 'Social Media'
+            else:
+                subcategory = 'Traditional Media'
+            sub_subcategory = keyword
+            
+        # International Relations
+        elif any(term in kw_lower for term in ['nato', 'eu', 'un', 'us', 'usa', 'sanctions',
+                                                'international', 'alliance']):
+            category = 'International Relations'
+            if any(term in kw_lower for term in ['nato', 'eu', 'un']):
+                subcategory = 'Organizations'
+            else:
+                subcategory = 'Countries & Alliances'
+            sub_subcategory = keyword
+            
+        # Economic & Resources
+        elif any(term in kw_lower for term in ['economic', 'sanctions', 'oil', 'gas', 'energy',
+                                                'trade', 'financial']):
+            category = 'Economic & Resources'
+            if any(term in kw_lower for term in ['oil', 'gas', 'energy']):
+                subcategory = 'Energy Resources'
+            else:
+                subcategory = 'Financial & Trade'
+            sub_subcategory = keyword
+            
+        # Humanitarian & Social
+        elif any(term in kw_lower for term in ['humanitarian', 'refugee', 'civilian', 'casualties',
+                                                'human rights', 'evacuation']):
+            category = 'Humanitarian & Social'
+            subcategory = 'Impact & Response'
+            sub_subcategory = keyword
+            
+        # Default category for uncategorized keywords
+        else:
+            category = 'General Topics'
+            # Try to group by first word or common patterns
+            if kw_lower.startswith(('significant', 'major', 'important')):
+                subcategory = 'Key Developments'
+            elif any(char.isdigit() for char in keyword):
+                subcategory = 'Quantitative Data'
+            else:
+                subcategory = 'Other Topics'
+            sub_subcategory = keyword
+            
+        return category, subcategory, sub_subcategory
+    
+    # Create DataFrame with hierarchical structure
     rows = []
-    for i, (keyword, count) in enumerate(zip(labels[:10], values[:10])):
+    # Process more keywords to ensure we have enough in each category
+    for i, (keyword, count) in enumerate(zip(labels[:30], values[:30])):
+        category, subcategory, sub_subcategory = categorize_keyword(keyword)
         rows.append({
-            'category': keyword,  # Use keyword as category for comparison
-            'subcategory': 'Frequency',  # Simple subcategory
-            'sub_subcategory': '',
+            'category': category,
+            'subcategory': subcategory,
+            'sub_subcategory': sub_subcategory,
             'count': count
         })
     
     df = pd.DataFrame(rows)
-    logging.info(f"Converted keywords to DataFrame with {len(df)} rows")
+    logging.info(f"Converted keywords to hierarchical DataFrame with {len(df)} rows")
+    logging.info(f"Categories: {df['category'].nunique()}, Subcategories: {df['subcategory'].nunique()}")
     return df
 
 
 def convert_entities_to_comparison_format(entities_data: Dict, entity_type: str = 'ALL') -> pd.DataFrame:
     """
-    Convert named entities data to comparison format.
+    Convert named entities data to comparison format with hierarchical structure.
     
     Args:
         entities_data: Named entities data dictionary
@@ -94,7 +186,88 @@ def convert_entities_to_comparison_format(entities_data: Dict, entity_type: str 
     
     rows = []
     
-    # For comparison, we want to use entities as categories
+    # Create hierarchical structure for entities
+    def categorize_entity(entity: str, ent_type: str) -> Tuple[str, str, str]:
+        """Categorize entity into hierarchical structure based on type and content."""
+        entity_lower = entity.lower()
+        
+        if ent_type == 'GPE':  # Geopolitical entities
+            category = 'Geographic Entities'
+            # Subcategorize by region or type
+            if any(country in entity_lower for country in ['russia', 'ukraine', 'belarus', 'poland']):
+                subcategory = 'Eastern Europe'
+            elif any(country in entity_lower for country in ['usa', 'us', 'united states', 'america', 'canada']):
+                subcategory = 'North America'
+            elif any(country in entity_lower for country in ['uk', 'united kingdom', 'britain', 'france', 'germany']):
+                subcategory = 'Western Europe'
+            elif any(term in entity_lower for term in ['moscow', 'kyiv', 'kiev', 'washington', 'berlin']):
+                subcategory = 'Capital Cities'
+            else:
+                subcategory = 'Other Locations'
+                
+        elif ent_type == 'ORG':  # Organizations
+            category = 'Organizations'
+            # Subcategorize by organization type
+            if any(term in entity_lower for term in ['nato', 'un', 'eu', 'osce', 'g7', 'g20']):
+                subcategory = 'International Organizations'
+            elif any(term in entity_lower for term in ['ministry', 'department', 'government']):
+                subcategory = 'Government Bodies'
+            elif any(term in entity_lower for term in ['military', 'army', 'force', 'defense']):
+                subcategory = 'Military Organizations'
+            elif any(term in entity_lower for term in ['news', 'media', 'press', 'telegraph', 'times']):
+                subcategory = 'Media Organizations'
+            else:
+                subcategory = 'Other Organizations'
+                
+        elif ent_type == 'PERSON':  # People
+            category = 'People & Figures'
+            # Subcategorize by role or prominence
+            if any(term in entity_lower for term in ['putin', 'zelensky', 'biden', 'macron']):
+                subcategory = 'World Leaders'
+            elif any(term in entity_lower for term in ['minister', 'secretary', 'ambassador']):
+                subcategory = 'Government Officials'
+            elif any(term in entity_lower for term in ['general', 'colonel', 'commander']):
+                subcategory = 'Military Personnel'
+            else:
+                subcategory = 'Other Individuals'
+                
+        elif ent_type == 'NORP':  # Nationalities or religious/political groups
+            category = 'Groups & Nationalities'
+            if any(term in entity_lower for term in ['russian', 'ukrainian', 'american', 'european']):
+                subcategory = 'Nationalities'
+            elif any(term in entity_lower for term in ['nato', 'western', 'eastern']):
+                subcategory = 'Political Alliances'
+            else:
+                subcategory = 'Other Groups'
+                
+        elif ent_type == 'DATE':  # Dates
+            category = 'Temporal References'
+            # Subcategorize by date type
+            if any(term in entity_lower for term in ['2022', '2023', '2024', '2025']):
+                subcategory = 'Specific Years'
+            elif any(term in entity_lower for term in ['january', 'february', 'march', 'april', 'may', 'june',
+                                                       'july', 'august', 'september', 'october', 'november', 'december']):
+                subcategory = 'Months & Seasons'
+            else:
+                subcategory = 'Other Time References'
+                
+        elif ent_type == 'EVENT':  # Events
+            category = 'Events & Operations'
+            if any(term in entity_lower for term in ['war', 'conflict', 'invasion']):
+                subcategory = 'Conflicts'
+            elif any(term in entity_lower for term in ['summit', 'meeting', 'conference']):
+                subcategory = 'Diplomatic Events'
+            else:
+                subcategory = 'Other Events'
+                
+        else:  # Other entity types
+            category = 'Other Entities'
+            subcategory = ent_type if ent_type else 'Uncategorized'
+            
+        sub_subcategory = entity
+        return category, subcategory, sub_subcategory
+    
+    # Process entities
     if 'top_entities' in entities_data:
         entity_labels = entities_data['top_entities'].get('labels', [])
         entity_types = entities_data['top_entities'].get('types', [])
@@ -102,52 +275,34 @@ def convert_entities_to_comparison_format(entities_data: Dict, entity_type: str 
         
         logging.info(f"Found {len(entity_labels)} top entities")
         
-        if entity_type == 'ALL':
-            # Show top 10 entities across all types
-            for i, (entity, ent_type, count) in enumerate(zip(entity_labels[:10], entity_types[:10], entity_values[:10])):
-                rows.append({
-                    'category': entity,  # Use entity name as category for comparison
-                    'subcategory': ent_type,  # Entity type as subcategory
-                    'sub_subcategory': '',
-                    'count': count
-                })
-        else:
-            # Filter by specific entity type
-            filtered_entities = [(label, ent_type, value) for label, ent_type, value in 
-                               zip(entity_labels, entity_types, entity_values) 
-                               if ent_type == entity_type][:10]
-            
-            for entity, ent_type, count in filtered_entities:
-                rows.append({
-                    'category': entity,  # Use entity name as category
-                    'subcategory': ent_type,  # Entity type as subcategory
-                    'sub_subcategory': '',
-                    'count': count
-                })
-    
-    # If we want to compare entity types instead of individual entities
-    elif 'entity_types' in entities_data and entity_type == 'ALL':
-        # Use entity types as categories
-        entity_type_labels = entities_data['entity_types'].get('labels', [])
-        entity_type_counts = entities_data['entity_types'].get('counts', [])
+        # Process more entities to ensure good distribution across categories
+        limit = 30 if entity_type == 'ALL' else 20
         
-        for ent_type, count in zip(entity_type_labels, entity_type_counts):
+        for i, (entity, ent_type, count) in enumerate(zip(entity_labels[:limit], 
+                                                          entity_types[:limit], 
+                                                          entity_values[:limit])):
+            # Apply filter if specific entity type is selected
+            if entity_type != 'ALL' and ent_type != entity_type:
+                continue
+                
+            category, subcategory, sub_subcategory = categorize_entity(entity, ent_type)
             rows.append({
-                'category': f'{ent_type} Entities',
-                'subcategory': 'Count',
-                'sub_subcategory': '',
+                'category': category,
+                'subcategory': subcategory,
+                'sub_subcategory': sub_subcategory,
                 'count': count
             })
     
     df = pd.DataFrame(rows)
-    logging.info(f"Converted entities to DataFrame with {len(df)} rows")
+    logging.info(f"Converted entities to hierarchical DataFrame with {len(df)} rows")
+    logging.info(f"Categories: {df['category'].nunique()}, Subcategories: {df['subcategory'].nunique()}")
     return df
 
 
 def convert_keywords_to_comparison_format_unified(keywords_data: Dict, unified_keywords: List[str], 
                                                   lang: str = None, detect_overlap: bool = True) -> pd.DataFrame:
     """
-    Convert keywords data to comparison format using a unified set of keywords.
+    Convert keywords data to comparison format using a unified set of keywords with hierarchical structure.
     
     Args:
         keywords_data: Keywords data dictionary
@@ -158,14 +313,105 @@ def convert_keywords_to_comparison_format_unified(keywords_data: Dict, unified_k
     Returns:
         pd.DataFrame with category, subcategory, sub_subcategory, and count columns
     """
+    # Helper function to categorize keyword (reuse from main function)
+    def categorize_keyword(keyword: str) -> Tuple[str, str, str]:
+        """Categorize keyword into hierarchical structure."""
+        kw_lower = keyword.lower()
+        
+        # Military & Operations
+        if any(term in kw_lower for term in ['military', 'army', 'force', 'defense', 'weapon', 'missile', 
+                                              'tank', 'aircraft', 'naval', 'combat', 'soldier', 'troops']):
+            category = 'Military & Operations'
+            if any(term in kw_lower for term in ['weapon', 'missile', 'tank', 'aircraft']):
+                subcategory = 'Equipment & Weapons'
+            elif any(term in kw_lower for term in ['soldier', 'troops', 'personnel']):
+                subcategory = 'Personnel'
+            else:
+                subcategory = 'Operations'
+            sub_subcategory = keyword
+            
+        # Geographic & Locations
+        elif any(term in kw_lower for term in ['russia', 'ukraine', 'moscow', 'kyiv', 'kiev', 'donbas', 
+                                                'crimea', 'region', 'city', 'territory']):
+            category = 'Geographic & Locations'
+            if any(term in kw_lower for term in ['russia', 'ukraine']):
+                subcategory = 'Countries'
+            elif any(term in kw_lower for term in ['moscow', 'kyiv', 'kiev']):
+                subcategory = 'Cities'
+            else:
+                subcategory = 'Regions'
+            sub_subcategory = keyword
+            
+        # Political & Leadership
+        elif any(term in kw_lower for term in ['putin', 'zelensky', 'minister', 'president', 'government',
+                                                'policy', 'politics', 'diplomatic', 'negotiations']):
+            category = 'Political & Leadership'
+            if any(term in kw_lower for term in ['putin', 'zelensky', 'president', 'minister']):
+                subcategory = 'Leaders & Officials'
+            else:
+                subcategory = 'Policy & Diplomacy'
+            sub_subcategory = keyword
+            
+        # Media & Information
+        elif any(term in kw_lower for term in ['news', 'media', 'report', 'telegram', 'twitter',
+                                                'propaganda', 'information']):
+            category = 'Media & Information'
+            if any(term in kw_lower for term in ['telegram', 'twitter', 'social']):
+                subcategory = 'Social Media'
+            else:
+                subcategory = 'Traditional Media'
+            sub_subcategory = keyword
+            
+        # International Relations
+        elif any(term in kw_lower for term in ['nato', 'eu', 'un', 'us', 'usa', 'sanctions',
+                                                'international', 'alliance']):
+            category = 'International Relations'
+            if any(term in kw_lower for term in ['nato', 'eu', 'un']):
+                subcategory = 'Organizations'
+            else:
+                subcategory = 'Countries & Alliances'
+            sub_subcategory = keyword
+            
+        # Economic & Resources
+        elif any(term in kw_lower for term in ['economic', 'sanctions', 'oil', 'gas', 'energy',
+                                                'trade', 'financial']):
+            category = 'Economic & Resources'
+            if any(term in kw_lower for term in ['oil', 'gas', 'energy']):
+                subcategory = 'Energy Resources'
+            else:
+                subcategory = 'Financial & Trade'
+            sub_subcategory = keyword
+            
+        # Humanitarian & Social
+        elif any(term in kw_lower for term in ['humanitarian', 'refugee', 'civilian', 'casualties',
+                                                'human rights', 'evacuation']):
+            category = 'Humanitarian & Social'
+            subcategory = 'Impact & Response'
+            sub_subcategory = keyword
+            
+        # Default category for uncategorized keywords
+        else:
+            category = 'General Topics'
+            # Try to group by first word or common patterns
+            if kw_lower.startswith(('significant', 'major', 'important')):
+                subcategory = 'Key Developments'
+            elif any(char.isdigit() for char in keyword):
+                subcategory = 'Quantitative Data'
+            else:
+                subcategory = 'Other Topics'
+            sub_subcategory = keyword
+            
+        return category, subcategory, sub_subcategory
+    
     if not keywords_data or 'top_keywords' not in keywords_data:
-        # Return empty rows for all unified keywords
+        # Return empty rows maintaining hierarchical structure
         rows = []
         for keyword in unified_keywords:
+            category, subcategory, sub_subcategory = categorize_keyword(keyword)
             rows.append({
-                'category': keyword,
-                'subcategory': 'Frequency',
-                'sub_subcategory': '',
+                'category': category,
+                'subcategory': subcategory,
+                'sub_subcategory': sub_subcategory,
                 'count': 0
             })
         return pd.DataFrame(rows)
@@ -176,17 +422,18 @@ def convert_keywords_to_comparison_format_unified(keywords_data: Dict, unified_k
         keywords_data['top_keywords'].get('values', [])
     ))
     
-    # Create rows for all unified keywords
+    # Create rows for all unified keywords with hierarchical structure
     rows = []
     has_overlap = False
     for keyword in unified_keywords:
         count = keyword_counts.get(keyword, 0)
         if count > 0:
             has_overlap = True
+        category, subcategory, sub_subcategory = categorize_keyword(keyword)
         rows.append({
-            'category': keyword,
-            'subcategory': 'Frequency',
-            'sub_subcategory': '',
+            'category': category,
+            'subcategory': subcategory,
+            'sub_subcategory': sub_subcategory,
             'count': count
         })
     
@@ -194,22 +441,25 @@ def convert_keywords_to_comparison_format_unified(keywords_data: Dict, unified_k
     if detect_overlap and not has_overlap and keyword_counts:
         logging.info(f"No keyword overlap detected for {lang} dataset, using top keywords from dataset")
         rows = []
-        for i, (keyword, count) in enumerate(list(keyword_counts.items())[:15]):
+        for i, (keyword, count) in enumerate(list(keyword_counts.items())[:30]):
+            category, subcategory, sub_subcategory = categorize_keyword(keyword)
             rows.append({
-                'category': f"{i+1}. {keyword}",  # Add ranking
-                'subcategory': f'Top {lang}' if lang else 'Top Keywords',
-                'sub_subcategory': '',
+                'category': category,
+                'subcategory': subcategory,
+                'sub_subcategory': sub_subcategory,
                 'count': count
             })
     
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+    logging.info(f"Unified keywords hierarchical structure - Categories: {df['category'].nunique()}, Subcategories: {df['subcategory'].nunique()}")
+    return df
 
 
 def convert_entities_to_comparison_format_unified(entities_data: Dict, unified_entities: List[Tuple[str, str]], 
                                                   entity_type_filter: str = 'ALL', lang: str = None,
                                                   detect_overlap: bool = True) -> pd.DataFrame:
     """
-    Convert named entities data to comparison format using a unified set of entities.
+    Convert named entities data to comparison format using a unified set of entities with hierarchical structure.
     
     Args:
         entities_data: Named entities data dictionary
@@ -221,15 +471,97 @@ def convert_entities_to_comparison_format_unified(entities_data: Dict, unified_e
     Returns:
         pd.DataFrame with category, subcategory, sub_subcategory, and count columns
     """
+    # Helper function to categorize entity (reuse from main function)
+    def categorize_entity(entity: str, ent_type: str) -> Tuple[str, str, str]:
+        """Categorize entity into hierarchical structure based on type and content."""
+        entity_lower = entity.lower()
+        
+        if ent_type == 'GPE':  # Geopolitical entities
+            category = 'Geographic Entities'
+            # Subcategorize by region or type
+            if any(country in entity_lower for country in ['russia', 'ukraine', 'belarus', 'poland']):
+                subcategory = 'Eastern Europe'
+            elif any(country in entity_lower for country in ['usa', 'us', 'united states', 'america', 'canada']):
+                subcategory = 'North America'
+            elif any(country in entity_lower for country in ['uk', 'united kingdom', 'britain', 'france', 'germany']):
+                subcategory = 'Western Europe'
+            elif any(term in entity_lower for term in ['moscow', 'kyiv', 'kiev', 'washington', 'berlin']):
+                subcategory = 'Capital Cities'
+            else:
+                subcategory = 'Other Locations'
+                
+        elif ent_type == 'ORG':  # Organizations
+            category = 'Organizations'
+            # Subcategorize by organization type
+            if any(term in entity_lower for term in ['nato', 'un', 'eu', 'osce', 'g7', 'g20']):
+                subcategory = 'International Organizations'
+            elif any(term in entity_lower for term in ['ministry', 'department', 'government']):
+                subcategory = 'Government Bodies'
+            elif any(term in entity_lower for term in ['military', 'army', 'force', 'defense']):
+                subcategory = 'Military Organizations'
+            elif any(term in entity_lower for term in ['news', 'media', 'press', 'telegraph', 'times']):
+                subcategory = 'Media Organizations'
+            else:
+                subcategory = 'Other Organizations'
+                
+        elif ent_type == 'PERSON':  # People
+            category = 'People & Figures'
+            # Subcategorize by role or prominence
+            if any(term in entity_lower for term in ['putin', 'zelensky', 'biden', 'macron']):
+                subcategory = 'World Leaders'
+            elif any(term in entity_lower for term in ['minister', 'secretary', 'ambassador']):
+                subcategory = 'Government Officials'
+            elif any(term in entity_lower for term in ['general', 'colonel', 'commander']):
+                subcategory = 'Military Personnel'
+            else:
+                subcategory = 'Other Individuals'
+                
+        elif ent_type == 'NORP':  # Nationalities or religious/political groups
+            category = 'Groups & Nationalities'
+            if any(term in entity_lower for term in ['russian', 'ukrainian', 'american', 'european']):
+                subcategory = 'Nationalities'
+            elif any(term in entity_lower for term in ['nato', 'western', 'eastern']):
+                subcategory = 'Political Alliances'
+            else:
+                subcategory = 'Other Groups'
+                
+        elif ent_type == 'DATE':  # Dates
+            category = 'Temporal References'
+            # Subcategorize by date type
+            if any(term in entity_lower for term in ['2022', '2023', '2024', '2025']):
+                subcategory = 'Specific Years'
+            elif any(term in entity_lower for term in ['january', 'february', 'march', 'april', 'may', 'june',
+                                                       'july', 'august', 'september', 'october', 'november', 'december']):
+                subcategory = 'Months & Seasons'
+            else:
+                subcategory = 'Other Time References'
+                
+        elif ent_type == 'EVENT':  # Events
+            category = 'Events & Operations'
+            if any(term in entity_lower for term in ['war', 'conflict', 'invasion']):
+                subcategory = 'Conflicts'
+            elif any(term in entity_lower for term in ['summit', 'meeting', 'conference']):
+                subcategory = 'Diplomatic Events'
+            else:
+                subcategory = 'Other Events'
+                
+        else:  # Other entity types
+            category = 'Other Entities'
+            subcategory = ent_type if ent_type else 'Uncategorized'
+            
+        sub_subcategory = entity
+        return category, subcategory, sub_subcategory
+    
     if not entities_data or 'top_entities' not in entities_data:
-        # Return empty rows for all unified entities
+        # Return empty rows for all unified entities with hierarchical structure
         rows = []
         for entity, ent_type in unified_entities:
             if entity_type_filter == 'ALL' or ent_type == entity_type_filter:
+                category, subcategory, sub_subcategory = categorize_entity(entity, ent_type)
                 rows.append({
-                    'category': entity,
-                    'subcategory': ent_type,
-                    'sub_subcategory': '',
+                    'category': category,
+                    'subcategory': subcategory,
+                    'sub_subcategory': sub_subcategory,
                     'count': 0
                 })
         return pd.DataFrame(rows)
@@ -247,7 +579,7 @@ def convert_entities_to_comparison_format_unified(entities_data: Dict, unified_e
         if entity_type_filter == 'ALL' or ent_type == entity_type_filter:
             entity_counts[(entity, ent_type)] = count
     
-    # Create rows for all unified entities
+    # Create rows for all unified entities with hierarchical structure
     rows = []
     has_overlap = False
     for entity, ent_type in unified_entities:
@@ -255,10 +587,11 @@ def convert_entities_to_comparison_format_unified(entities_data: Dict, unified_e
             count = entity_counts.get((entity, ent_type), 0)
             if count > 0:
                 has_overlap = True
+            category, subcategory, sub_subcategory = categorize_entity(entity, ent_type)
             rows.append({
-                'category': entity,
-                'subcategory': ent_type,
-                'sub_subcategory': '',
+                'category': category,
+                'subcategory': subcategory,
+                'sub_subcategory': sub_subcategory,
                 'count': count
             })
     
@@ -266,15 +599,19 @@ def convert_entities_to_comparison_format_unified(entities_data: Dict, unified_e
     if detect_overlap and not has_overlap and entity_counts:
         logging.info(f"No entity overlap detected for {lang} dataset, using top entities from dataset")
         rows = []
-        for i, ((entity, ent_type), count) in enumerate(list(entity_counts.items())[:15]):
+        limit = 30 if entity_type_filter == 'ALL' else 20
+        for i, ((entity, ent_type), count) in enumerate(list(entity_counts.items())[:limit]):
+            category, subcategory, sub_subcategory = categorize_entity(entity, ent_type)
             rows.append({
-                'category': f"{i+1}. {entity}",  # Add ranking
-                'subcategory': f'{ent_type} ({lang})' if lang else ent_type,
-                'sub_subcategory': '',
+                'category': category,
+                'subcategory': subcategory,
+                'sub_subcategory': sub_subcategory,
                 'count': count
             })
     
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+    logging.info(f"Unified entities hierarchical structure - Categories: {df['category'].nunique()}, Subcategories: {df['subcategory'].nunique()}")
+    return df
 
 
 def create_compare_tab_layout(db_options: List, min_date: datetime = None, max_date: datetime = None) -> html.Div:
