@@ -1938,12 +1938,28 @@ def create_sources_tab_layout(db_options: List, min_date: datetime = None, max_d
     sources_tab = html.Div([
         corpus_overview,
         
-        # Loading message overlay container
+        # Loading message overlay container with background
         html.Div([
+            # Semi-transparent background overlay
+            html.Div(style={
+                'position': 'fixed',
+                'top': '0',
+                'left': '0',
+                'width': '100%',
+                'height': '100%',
+                'background-color': 'rgba(0, 0, 0, 0.3)',
+                'z-index': '999'
+            }),
+            # Loading message box
             html.Div([
+                # Add the radar pulse animation
                 html.Div([
+                    html.Div(className="radar-pulse", children=[
+                        html.Div(className="ring-1"),
+                        html.Div(className="ring-2")
+                    ]),
                     html.P("Preparing data visualizations... 🎉", 
-                           className="text-center mt-3", 
+                           className="text-center mt-4", 
                            style={'color': '#13376f', 'font-weight': 'bold', 'font-size': '18px'}),
                     html.P("(Our algorithms are doing their best impression of a speed reader!)", 
                            className="text-muted text-center", 
@@ -1955,41 +1971,40 @@ def create_sources_tab_layout(db_options: List, min_date: datetime = None, max_d
                     'background': 'rgba(255, 255, 255, 0.98)',
                     'border': '2px solid #13376f',
                     'border-radius': '12px',
-                    'padding': '30px',
+                    'padding': '40px',
                     'box-shadow': '0 4px 20px rgba(0, 0, 0, 0.15)',
                     'max-width': '500px',
                     'margin': '0 auto',
                     'position': 'relative',
-                    'z-index': '1000'
+                    'z-index': '1001'
                 })
-            ], id="sources-loading-messages", 
-               style={
-                   'position': 'fixed',
-                   'top': '50%',
-                   'left': '50%',
-                   'transform': 'translate(-50%, -50%)',
-                   'display': 'none',
-                   'z-index': '1000'
-               })
-        ]),
+            ], style={
+                'position': 'fixed',
+                'top': '50%',
+                'left': '50%',
+                'transform': 'translate(-50%, -50%)',
+                'z-index': '1001'
+            })
+        ], id="sources-loading-messages", 
+           style={
+               'display': 'none',
+               'position': 'fixed',
+               'top': '0',
+               'left': '0',
+               'width': '100%',
+               'height': '100%',
+               'z-index': '998'
+           }),
         
-        # Main content area with loading wrapper
+        # Main content area with custom loading wrapper
         html.Div([
             # Stats container (will be updated by callback)
             html.Div(id="sources-stats-display", style={'margin-bottom': '10px'}),
             
-            # Wrap content in loading component
-            dcc.Loading(
-                id="sources-main-loading",
-                type="default",  # This triggers the horizontal radar sweep
-                color="#13376f",
-                children=[
-                    # Content container that gets updated
-                    html.Div(id="sources-content-container", style={'min-height': '400px'})
-                ],
-                # Keep loading active while parent is updating
-                parent_className="sources-loading-parent"
-            )
+            # Content container without dcc.Loading (we'll handle loading manually)
+            html.Div(id="sources-content-container", style={'min-height': '400px'}, children=[
+                # Initial empty content - no loading text here
+            ])
         ]),
         
         # Sources-specific About modal
@@ -2096,18 +2111,28 @@ def register_sources_tab_callbacks(app):
     app.clientside_callback(
         """
         function(n_clicks, tab_value) {
-            // Show loading messages when Sources tab becomes active or button is clicked
-            if (tab_value === 'tab-sources' || n_clicks > 0) {
-                return {
-                    'position': 'fixed',
-                    'top': '50%',
-                    'left': '50%',
-                    'transform': 'translate(-50%, -50%)',
-                    'display': 'block',
-                    'z-index': '1000'
-                };
+            // Only show loading if we're on the Sources tab
+            if (tab_value === 'tab-sources') {
+                // Check if button was clicked (not just tab switch)
+                const ctx = window.dash_clientside.callback_context;
+                if (ctx.triggered && ctx.triggered.length > 0) {
+                    const trigger = ctx.triggered[0];
+                    // Show loading if button was clicked or if it's first time on tab
+                    if (trigger.prop_id.includes('filter-button') || 
+                        (trigger.prop_id.includes('tabs') && (!n_clicks || n_clicks === 0))) {
+                        return {
+                            'display': 'block',
+                            'position': 'fixed',
+                            'top': '0',
+                            'left': '0',
+                            'width': '100%',
+                            'height': '100%',
+                            'z-index': '998'
+                        };
+                    }
+                }
             }
-            return dash_clientside.no_update;
+            return window.dash_clientside.no_update;
         }
         """,
         Output("sources-loading-messages", "style", allow_duplicate=True),
@@ -2217,7 +2242,15 @@ def register_sources_tab_callbacks(app):
         except Exception as e:
             logging.error(f"Error fetching data: {e}")
             error_content = html.Div(f"Error loading data: {str(e)}", className="alert alert-danger")
-            return error_content, error_content, {'display': 'none'}
+            return error_content, error_content, {
+                'display': 'none',
+                'position': 'fixed',
+                'top': '0',
+                'left': '0',
+                'width': '100%',
+                'height': '100%',
+                'z-index': '998'
+            }
         
         # Get time series data with error handling - ONLY for the active subtab later
         # For now, we'll fetch minimal time series data
@@ -2308,7 +2341,15 @@ def register_sources_tab_callbacks(app):
         
         # Return updated content with hidden loading messages
         logging.info("Sources tab data ready, returning content")
-        return stats_html, updated_tabs_content, {'display': 'none'}
+        return stats_html, updated_tabs_content, {
+            'display': 'none',
+            'position': 'fixed',
+            'top': '0',
+            'left': '0',
+            'width': '100%',
+            'height': '100%',
+            'z-index': '998'
+        }
     
     # Callback to toggle the Documents About modal
     @app.callback(
