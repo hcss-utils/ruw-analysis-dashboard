@@ -141,13 +141,19 @@ def create_db_engine() -> Optional[Engine]:
         return None
         
     try:
+        # Add timeout for Heroku
+        connect_args = {}
+        if 'DYNO' in os.environ:
+            connect_args = {'connect_timeout': 25, 'options': '-c statement_timeout=25000'}
+        
         engine = create_engine(
             connection_string,
             poolclass=QueuePool,
             pool_size=DB_CONFIG['pool_size'],
             max_overflow=DB_CONFIG['max_overflow'],
             pool_timeout=DB_CONFIG['pool_timeout'],
-            pool_recycle=DB_CONFIG['pool_recycle']
+            pool_recycle=DB_CONFIG['pool_recycle'],
+            connect_args=connect_args
         )
         
         # Test the connection
