@@ -114,11 +114,8 @@ def create_comparison_plot(
     cat_a['percentage'] = (cat_a['count'] / total_a * 100).round(1) if total_a > 0 else 0
     cat_b['percentage'] = (cat_b['count'] / total_b * 100).round(1) if total_b > 0 else 0
     
-    # For cross-language comparisons, use appropriate visualization
-    if is_cross_language and plot_type in ['diff_means', 'radar', 'parallel']:
-        # For cross-language, these visualizations don't make sense with different categories
-        # Use side-by-side bar charts instead
-        return _create_cross_language_comparison(cat_a, cat_b, slice_a_name, slice_b_name)
+    # REMOVED: Cross-language detection override
+    # User wants consistent visualization regardless of category overlap
     
     # Choose visualization type
     if plot_type == 'parallel':
@@ -626,6 +623,7 @@ def _create_diff_means_chart(
 ) -> Tuple[go.Figure, go.Figure]:
     """
     Create diverging bar chart comparison.
+    Works consistently for taxonomy elements, keywords, and named entities.
     
     Args:
         cat_a: Category data for slice A
@@ -637,6 +635,15 @@ def _create_diff_means_chart(
         Tuple[go.Figure, go.Figure]: Two complementary figures
     """
     logging.info(f"_create_diff_means_chart: cat_a shape={cat_a.shape}, cat_b shape={cat_b.shape}")
+    
+    # Ensure percentages are calculated if not present
+    if 'percentage' not in cat_a.columns:
+        total_a = cat_a['count'].sum()
+        cat_a['percentage'] = (cat_a['count'] / total_a * 100) if total_a > 0 else 0
+    
+    if 'percentage' not in cat_b.columns:
+        total_b = cat_b['count'].sum()
+        cat_b['percentage'] = (cat_b['count'] / total_b * 100) if total_b > 0 else 0
     
     # Prepare data - merge and calculate differences
     merged = pd.merge(
@@ -652,11 +659,15 @@ def _create_diff_means_chart(
         logging.info(f"Merged columns: {merged.columns.tolist()}")
         logging.info(f"Merged sample:\n{merged.head()}")
     
-    # Calculate difference (B - A)
+    # Calculate difference (B - A) in percentage points
     merged['diff'] = merged[f'percentage_{slice_b_name.lower()}'] - merged[f'percentage_{slice_a_name.lower()}']
     
     # Sort by absolute difference for better visualization
     merged = merged.sort_values('diff', key=abs, ascending=False)
+    
+    # Limit to top 20 items for clarity
+    if len(merged) > 20:
+        merged = merged.head(20)
     
     # Create the diverging bar chart
     fig = go.Figure()
@@ -667,15 +678,22 @@ def _create_diff_means_chart(
         x=merged['diff'],
         orientation='h',
         marker_color=[THEME_COLORS['russian'] if x < 0 else THEME_COLORS['western'] for x in merged['diff']],
-        text=merged.apply(
-            lambda x: f"{x['diff']:.1f}pp<br>({slice_a_name}: {x[f'percentage_{slice_a_name.lower()}']:.1f}%)<br>({slice_b_name}: {x[f'percentage_{slice_b_name.lower()}']:.1f}%)",
-            axis=1
-        ),
+        text=merged['diff'].apply(lambda x: f"{x:+.1f}pp"),  # Simplified text
         textposition='outside',
         hoverinfo='text',
-        # Add hover template with count values using thousands separators
+        # Comprehensive hover template
         hovertemplate=merged.apply(
-            lambda x: f"{x['category']}<br>Diff: {x['diff']:.1f} pp<br>{slice_a_name}: {x[f'percentage_{slice_a_name.lower()}']:.1f}% ({x[f'count_{slice_a_name.lower()}']:,} items)<br>{slice_b_name}: {x[f'percentage_{slice_b_name.lower()}']:.1f}% ({x[f'count_{slice_b_name.lower()}']:,} items)<extra></extra>",
+            lambda x: (
+                f"<b>{x['category']}</b><br>"
+                f"<br>"
+                f"<b>Difference:</b> {x['diff']:+.1f} percentage points<br>"
+                f"<br>"
+                f"<b>{slice_a_name}:</b> {x[f'percentage_{slice_a_name.lower()}']:.1f}% "
+                f"({x[f'count_{slice_a_name.lower()}']:,.0f} items)<br>"
+                f"<b>{slice_b_name}:</b> {x[f'percentage_{slice_b_name.lower()}']:.1f}% "
+                f"({x[f'count_{slice_b_name.lower()}']:,.0f} items)"
+                f"<extra></extra>"
+            ),
             axis=1
         ).tolist()
     ))

@@ -697,3 +697,50 @@ body:has(div[data-dash-is-loading="true"]) {
     }
 }
 
+/* =========== Burstiness Tab Styling =========== */
+/* Ensure collapsible sections are displayed horizontally */
+.burst-model-card {
+    transition: all 0.3s ease;
+}
+
+.burst-model-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.burst-model-card.active {
+    background-color: #f0f7ff;
+}
+
+/* Make collapsible buttons full width within their columns */
+#burstiness-events-toggle,
+#burstiness-standard-filters-toggle,
+#burstiness-datatype-filters-toggle {
+    width: 100%;
+}
+
+/* Ensure collapsible cards don't overflow their columns */
+#burstiness-events-collapse .card,
+#burstiness-standard-filters-collapse .card,
+#burstiness-datatype-filters-collapse .card {
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+/* Add some spacing between the collapsible sections */
+@media (min-width: 992px) {
+    #burstiness-events-collapse,
+    #burstiness-standard-filters-collapse,
+    #burstiness-datatype-filters-collapse {
+        margin-right: 10px;
+    }
+}
+
+/* Responsive behavior for smaller screens */
+@media (max-width: 991px) {
+    /* Stack the collapsible sections vertically on smaller screens */
+    .col-lg-4 {
+        margin-bottom: 15px;
+    }
+}
+
