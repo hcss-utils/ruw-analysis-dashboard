@@ -1770,7 +1770,7 @@ def fetch_named_entities_data(
                     AND jsonb_typeof(dsc.named_entities) = 'array'
                     AND jsonb_array_length(dsc.named_entities) > 0
                 {filter_sql}
-                LIMIT 50000  -- Balanced for performance and accuracy
+                LIMIT 10000  -- Reduced for Heroku memory constraints
             ),
             entity_data AS (
                 SELECT 
@@ -1801,7 +1801,7 @@ def fetch_named_entities_data(
                     AND jsonb_typeof(dsc.named_entities) = 'array'
                     AND jsonb_array_length(dsc.named_entities) > 0
                 {filter_sql}
-                LIMIT 50000  -- Balanced for performance and accuracy
+                LIMIT 10000  -- Reduced for Heroku memory constraints
             ),
             entity_data AS (
                 SELECT 
@@ -1833,7 +1833,7 @@ def fetch_named_entities_data(
                     AND jsonb_typeof(dsc.named_entities) = 'array'
                     AND jsonb_array_length(dsc.named_entities) > 0
                 {filter_sql}
-                LIMIT 50000  -- Balanced for performance and accuracy
+                LIMIT 10000  -- Reduced for Heroku memory constraints
             ),
             entity_data AS (
                 SELECT 

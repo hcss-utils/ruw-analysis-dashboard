@@ -16,6 +16,15 @@ import os
 import sys
 from datetime import datetime
 
+# Apply Heroku optimizations if on Heroku
+if 'DYNO' in os.environ:
+    import gc
+    gc.collect()
+    os.environ['OMP_NUM_THREADS'] = '1'
+    os.environ['MKL_NUM_THREADS'] = '1'
+    os.environ['NUMEXPR_NUM_THREADS'] = '1'
+    logging.info("Applied Heroku memory optimizations")
+
 # Import Dash components
 import dash
 import dash_auth
