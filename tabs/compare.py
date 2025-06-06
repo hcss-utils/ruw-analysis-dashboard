@@ -268,7 +268,7 @@ def convert_entities_to_comparison_format(entities_data: Dict, entity_type: str 
         return category, subcategory, sub_subcategory
     
     # Process entities
-    if 'top_entities' in entities_data:
+    if entities_data and isinstance(entities_data, dict) and 'top_entities' in entities_data:
         entity_labels = entities_data['top_entities'].get('labels', [])
         entity_types = entities_data['top_entities'].get('types', [])
         entity_values = entities_data['top_entities'].get('values', [])
