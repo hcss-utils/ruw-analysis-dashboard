@@ -99,6 +99,9 @@ def create_dash_app() -> dash.Dash:
     app.scripts.config.serve_locally = True
     app.css.config.serve_locally = True
     
+    # Disable async loading for Plotly to avoid 404 errors
+    app._dev_tools.serve_dev_bundles = False
+    
     # Add Basic Authentication
     # Comment this out during development
     # auth = dash_auth.BasicAuth(app, VALID_USERNAME_PASSWORD_PAIRS)

@@ -1438,39 +1438,56 @@ def fetch_keywords_data(
             WITH keyword_data AS (
                 SELECT 
                     dsc.id as chunk_id,
-                    unnest(dsc.keywords) as keyword
+                    COALESCE(
+                        elem->'translations'->>'en',
+                        elem->'translations'->>'EN', 
+                        elem->>'lemma'
+                    ) as keyword
                 FROM document_section_chunk dsc
                 JOIN document_section ds ON dsc.document_section_id = ds.id
                 JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
                 INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
-                WHERE dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0
+                CROSS JOIN LATERAL jsonb_array_elements(dsc.keywords_llm) as elem
+                WHERE dsc.keywords_llm IS NOT NULL 
+                    AND jsonb_typeof(dsc.keywords_llm) = 'array'
+                    AND jsonb_array_length(dsc.keywords_llm) > 0
                 {filter_sql}
             )
             SELECT 
                 COUNT(DISTINCT keyword) as unique_keywords,
                 COUNT(*) as total_keyword_occurrences,
                 COUNT(DISTINCT chunk_id) as chunks_with_keywords
-            FROM keyword_data;
+            FROM keyword_data
+            WHERE keyword IS NOT NULL;
             """
             
             stats_df = pd.read_sql(text(stats_query), conn, params=params)
             
             # Get top keywords by frequency - ONLY from relevant chunks
+            # Use keywords_llm and get English translations
             top_keywords_query = f"""
             WITH keyword_data AS (
                 SELECT 
-                    unnest(dsc.keywords) as keyword
+                    COALESCE(
+                        elem->'translations'->>'en',
+                        elem->'translations'->>'EN', 
+                        elem->>'lemma'
+                    ) as keyword
                 FROM document_section_chunk dsc
                 JOIN document_section ds ON dsc.document_section_id = ds.id
                 JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
                 INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
-                WHERE dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0
+                CROSS JOIN LATERAL jsonb_array_elements(dsc.keywords_llm) as elem
+                WHERE dsc.keywords_llm IS NOT NULL 
+                    AND jsonb_typeof(dsc.keywords_llm) = 'array'
+                    AND jsonb_array_length(dsc.keywords_llm) > 0
                 {filter_sql}
             )
             SELECT 
                 keyword,
                 COUNT(*) as count
             FROM keyword_data
+            WHERE keyword IS NOT NULL
             GROUP BY keyword
             ORDER BY count DESC
             LIMIT 20;
@@ -1483,7 +1500,7 @@ def fetch_keywords_data(
             WITH chunk_keyword_counts AS (
                 SELECT 
                     dsc.id as chunk_id,
-                    array_length(dsc.keywords, 1) as keyword_count
+                    jsonb_array_length(dsc.keywords_llm) as keyword_count
                 FROM document_section_chunk dsc
                 JOIN document_section ds ON dsc.document_section_id = ds.id
                 JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
@@ -1521,12 +1538,19 @@ def fetch_keywords_data(
             WITH keyword_lang_data AS (
                 SELECT 
                     ud.language,
-                    unnest(dsc.keywords) as keyword
+                    COALESCE(
+                        elem->'translations'->>'en',
+                        elem->'translations'->>'EN', 
+                        elem->>'lemma'
+                    ) as keyword
                 FROM document_section_chunk dsc
                 JOIN document_section ds ON dsc.document_section_id = ds.id
                 JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
                 INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
-                WHERE dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0
+                CROSS JOIN LATERAL jsonb_array_elements(dsc.keywords_llm) as elem
+                WHERE dsc.keywords_llm IS NOT NULL 
+                    AND jsonb_typeof(dsc.keywords_llm) = 'array'
+                    AND jsonb_array_length(dsc.keywords_llm) > 0
                 {filter_sql}
             )
             SELECT 
@@ -1534,6 +1558,7 @@ def fetch_keywords_data(
                 COUNT(DISTINCT keyword) as unique_keywords,
                 COUNT(*) as total_occurrences
             FROM keyword_lang_data
+            WHERE keyword IS NOT NULL
             GROUP BY language
             ORDER BY total_occurrences DESC;
             """
@@ -1545,12 +1570,19 @@ def fetch_keywords_data(
             WITH keyword_db_data AS (
                 SELECT 
                     ud.database,
-                    unnest(dsc.keywords) as keyword
+                    COALESCE(
+                        elem->'translations'->>'en',
+                        elem->'translations'->>'EN', 
+                        elem->>'lemma'
+                    ) as keyword
                 FROM document_section_chunk dsc
                 JOIN document_section ds ON dsc.document_section_id = ds.id
                 JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
                 INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
-                WHERE dsc.keywords IS NOT NULL AND array_length(dsc.keywords, 1) > 0
+                CROSS JOIN LATERAL jsonb_array_elements(dsc.keywords_llm) as elem
+                WHERE dsc.keywords_llm IS NOT NULL 
+                    AND jsonb_typeof(dsc.keywords_llm) = 'array'
+                    AND jsonb_array_length(dsc.keywords_llm) > 0
                 {filter_sql}
             )
             SELECT 
@@ -1558,6 +1590,7 @@ def fetch_keywords_data(
                 COUNT(DISTINCT keyword) as unique_keywords,
                 COUNT(*) as total_occurrences
             FROM keyword_db_data
+            WHERE keyword IS NOT NULL
             GROUP BY database
             ORDER BY total_occurrences DESC
             LIMIT 10;
@@ -1737,7 +1770,7 @@ def fetch_named_entities_data(
                     AND jsonb_typeof(dsc.named_entities) = 'array'
                     AND jsonb_array_length(dsc.named_entities) > 0
                 {filter_sql}
-                LIMIT 10000  -- Sample for performance
+                LIMIT 50000  -- Balanced for performance and accuracy
             ),
             entity_data AS (
                 SELECT 
@@ -1768,7 +1801,7 @@ def fetch_named_entities_data(
                     AND jsonb_typeof(dsc.named_entities) = 'array'
                     AND jsonb_array_length(dsc.named_entities) > 0
                 {filter_sql}
-                LIMIT 5000  -- Sample for performance
+                LIMIT 50000  -- Balanced for performance and accuracy
             ),
             entity_data AS (
                 SELECT 
@@ -1800,7 +1833,7 @@ def fetch_named_entities_data(
                     AND jsonb_typeof(dsc.named_entities) = 'array'
                     AND jsonb_array_length(dsc.named_entities) > 0
                 {filter_sql}
-                LIMIT 5000  -- Sample for performance
+                LIMIT 50000  -- Balanced for performance and accuracy
             ),
             entity_data AS (
                 SELECT 

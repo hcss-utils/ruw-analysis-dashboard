@@ -109,7 +109,10 @@ TAXONOMY_LEVEL_OPTIONS = [
 ALGORITHM_OPTIONS = [
     {'label': 'Basic Kleinberg (2-state)', 'value': 'basic'},
     {'label': 'Multi-state Kleinberg', 'value': 'multi_state'},
-    {'label': 'Statistical Validation', 'value': 'statistical'}
+    {'label': 'Statistical Validation', 'value': 'statistical'},
+    {'label': 'Density-based', 'value': 'density'},
+    {'label': 'Cascade Detection', 'value': 'cascade'},
+    {'label': 'Events Model', 'value': 'events'}
 ]
 
 # Default historical events
@@ -228,18 +231,93 @@ def create_burstiness_tab_layout():
                             className="mb-3"
                         ),
                     ], width=6),
-                    # Algorithm selection
+                    # Algorithm selection - removed to be replaced with model cards below
                     dbc.Col([
-                        html.Label("Algorithm:"),
-                        dcc.RadioItems(
-                            id='burstiness-algorithm',
-                            options=ALGORITHM_OPTIONS,
-                            value='basic',
-                            inline=True,
-                            className="mb-3"
-                        ),
+                        html.Label("Burst Detection Models:"),
+                        html.P("Select a model by clicking on it", className="text-muted small"),
                     ], width=6),
                 ]),
+                
+                # Model cards for burst detection algorithms
+                dbc.Row([
+                    dbc.Col([
+                        html.Div([
+                            # Model cards container with horizontal layout
+                            html.Div([
+                                # Basic Kleinberg model card
+                                dbc.Card([
+                                    dbc.CardBody([
+                                        html.H5("Basic Kleinberg", className="card-title text-center"),
+                                        html.P("2-state burst detection", className="card-text text-center small"),
+                                        html.Div(className="text-center"),
+                                    ], className="p-3"),
+                                ], id="model-card-basic", className="burst-model-card active", 
+                                style={"cursor": "pointer", "border": "2px solid #13376f"}),
+                                
+                                # Multi-state Kleinberg model card
+                                dbc.Card([
+                                    dbc.CardBody([
+                                        html.H5("Multi-state", className="card-title text-center"),
+                                        html.P("Advanced burst detection", className="card-text text-center small"),
+                                        html.Div(className="text-center"),
+                                    ], className="p-3"),
+                                ], id="model-card-multi_state", className="burst-model-card",
+                                style={"cursor": "pointer", "border": "2px solid transparent"}),
+                                
+                                # Statistical Validation model card
+                                dbc.Card([
+                                    dbc.CardBody([
+                                        html.H5("Statistical", className="card-title text-center"),
+                                        html.P("With validation", className="card-text text-center small"),
+                                        html.Div(className="text-center"),
+                                    ], className="p-3"),
+                                ], id="model-card-statistical", className="burst-model-card",
+                                style={"cursor": "pointer", "border": "2px solid transparent"}),
+                                
+                                # Density-based model card
+                                dbc.Card([
+                                    dbc.CardBody([
+                                        html.H5("Density-based", className="card-title text-center"),
+                                        html.P("Density detection", className="card-text text-center small"),
+                                        html.Div(className="text-center"),
+                                    ], className="p-3"),
+                                ], id="model-card-density", className="burst-model-card",
+                                style={"cursor": "pointer", "border": "2px solid transparent"}),
+                                
+                                # Cascade Detection model card
+                                dbc.Card([
+                                    dbc.CardBody([
+                                        html.H5("Cascade", className="card-title text-center"),
+                                        html.P("Pattern detection", className="card-text text-center small"),
+                                        html.Div(className="text-center"),
+                                    ], className="p-3"),
+                                ], id="model-card-cascade", className="burst-model-card",
+                                style={"cursor": "pointer", "border": "2px solid transparent"}),
+                                
+                                # Events model card (disabled)
+                                dbc.Card([
+                                    dbc.CardBody([
+                                        html.H5("Events Model", className="card-title text-center text-muted"),
+                                        html.P("Not yet activated", className="card-text text-center small text-danger"),
+                                        html.Div(className="text-center"),
+                                    ], className="p-3"),
+                                ], id="model-card-events", className="burst-model-card",
+                                style={"cursor": "not-allowed", "border": "2px solid transparent", "opacity": "0.6"}),
+                                
+                            ], className="burst-models-container", style={
+                                "display": "flex",
+                                "flex-direction": "row",
+                                "flex-wrap": "nowrap",
+                                "justify-content": "space-between",
+                                "width": "100%",
+                                "gap": "10px",
+                                "overflow-x": "auto"
+                            }),
+                        ]),
+                        # Store for selected algorithm
+                        dcc.Store(id='burstiness-algorithm', data='basic'),
+                    ], width=12),
+                ], className="mt-3 mb-3"),
                 
                 # Algorithm parameters (collapsible)
                 dbc.Row([
@@ -338,13 +416,14 @@ def create_burstiness_tab_layout():
                     ], width=12),
                 ]),
                 
+                # All collapsible sections in one horizontal row
                 dbc.Row([
                     # Event Management (collapsible)
                     dbc.Col([
                         dbc.Button(
                             "Historical Events", 
                             id="burstiness-events-toggle",
-                            className="mb-3",
+                            className="mb-3 w-100",
                             color="danger"
                         ),
                         dbc.Collapse(
@@ -384,16 +463,14 @@ def create_burstiness_tab_layout():
                             id="burstiness-events-collapse",
                             is_open=False,
                         ),
-                    ], width=12),
-                ]),
-                
-                dbc.Row([
+                    ], width=4),
+                    
                     # Standard filters (collapsible)
                     dbc.Col([
                         dbc.Button(
                             "Standard Filters", 
                             id="burstiness-standard-filters-toggle",
-                            className="mb-3",
+                            className="mb-3 w-100",
                             color="secondary"
                         ),
                         dbc.Collapse(
@@ -408,7 +485,7 @@ def create_burstiness_tab_layout():
                                                 value='ALL',
                                                 clearable=False,
                                             ),
-                                        ], width=4),
+                                        ], width=12, lg=4),
                                         dbc.Col([
                                             html.Label("Database:"),
                                             dcc.Dropdown(
@@ -417,7 +494,7 @@ def create_burstiness_tab_layout():
                                                 value='ALL',
                                                 clearable=False,
                                             )
-                                        ], width=4),
+                                        ], width=12, lg=4),
                                         dbc.Col([
                                             html.Label("Source Type:"),
                                             dcc.Dropdown(
@@ -426,7 +503,7 @@ def create_burstiness_tab_layout():
                                                 value='ALL',
                                                 clearable=False,
                                             )
-                                        ], width=4),
+                                        ], width=12, lg=4),
                                     ]),
                                     dbc.Row([
                                         dbc.Col([
@@ -457,16 +534,14 @@ def create_burstiness_tab_layout():
                             id="burstiness-standard-filters-collapse",
                             is_open=False,
                         ),
-                    ], width=12),
-                ]),
-                
-                dbc.Row([
+                    ], width=4),
+                    
                     # Data type filters (collapsible)
                     dbc.Col([
                         dbc.Button(
                             "Data Type Filters", 
                             id="burstiness-datatype-filters-toggle",
-                            className="mb-3",
+                            className="mb-3 w-100",
                             color="primary"
                         ),
                         dbc.Collapse(
@@ -491,7 +566,7 @@ def create_burstiness_tab_layout():
                                                     className="ml-3"
                                                 )
                                             ], id="burstiness-taxonomy-level-container"),
-                                        ], width=4),
+                                        ], width=12, lg=4),
                                         
                                         # Keywords options
                                         dbc.Col([
@@ -514,7 +589,7 @@ def create_burstiness_tab_layout():
                                                     className="ml-3"
                                                 )
                                             ], id="burstiness-keywords-options-container"),
-                                        ], width=4),
+                                        ], width=12, lg=4),
                                         
                                         # Named entities options
                                         dbc.Col([
@@ -544,16 +619,17 @@ def create_burstiness_tab_layout():
                                                     className="ml-3 mt-2"
                                                 )
                                             ], id="burstiness-entities-options-container"),
-                                        ], width=4),
+                                        ], width=12, lg=4),
                                     ]),
                                 ])
                             ),
                             id="burstiness-datatype-filters-collapse",
                             is_open=True,
                         ),
-                    ], width=12),
-                ]),
+                    ], width=4),
+                ], className="mb-3"), # End of horizontal row for all collapsible sections
                 
+                # Separate row for Visualization Options since it's wider
                 dbc.Row([
                     # Visualization Options
                     dbc.Col([
@@ -1163,6 +1239,85 @@ def register_burstiness_callbacks(app):
         if value and 'named_entities' in value:
             return {"display": "block"}
         return {"display": "none"}
+    
+    # Callback for model card selection
+    @app.callback(
+        [
+            Output('burstiness-algorithm', 'data'),
+            Output('model-card-basic', 'className'),
+            Output('model-card-multi_state', 'className'),
+            Output('model-card-statistical', 'className'),
+            Output('model-card-density', 'className'),
+            Output('model-card-cascade', 'className'),
+            Output('model-card-events', 'className'),
+        ],
+        [
+            Input('model-card-basic', 'n_clicks'),
+            Input('model-card-multi_state', 'n_clicks'),
+            Input('model-card-statistical', 'n_clicks'),
+            Input('model-card-density', 'n_clicks'),
+            Input('model-card-cascade', 'n_clicks'),
+        ],
+        [State('burstiness-algorithm', 'data')],
+        prevent_initial_call=True
+    )
+    def update_model_selection(basic_clicks, multi_clicks, stat_clicks, density_clicks, cascade_clicks, current_algorithm):
+        """Handle model card selection"""
+        ctx = dash.callback_context
+        if not ctx.triggered:
+            return dash.no_update
+        
+        # Get which card was clicked
+        triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
+        
+        # Extract the algorithm value from the card ID
+        algorithm_map = {
+            'model-card-basic': 'basic',
+            'model-card-multi_state': 'multi_state',
+            'model-card-statistical': 'statistical',
+            'model-card-density': 'density',
+            'model-card-cascade': 'cascade'
+        }
+        
+        selected_algorithm = algorithm_map.get(triggered_id, current_algorithm)
+        
+        # Update card classes
+        basic_class = "burst-model-card active" if selected_algorithm == 'basic' else "burst-model-card"
+        multi_class = "burst-model-card active" if selected_algorithm == 'multi_state' else "burst-model-card"
+        stat_class = "burst-model-card active" if selected_algorithm == 'statistical' else "burst-model-card"
+        density_class = "burst-model-card active" if selected_algorithm == 'density' else "burst-model-card"
+        cascade_class = "burst-model-card active" if selected_algorithm == 'cascade' else "burst-model-card"
+        events_class = "burst-model-card" # Events is always inactive
+        
+        return selected_algorithm, basic_class, multi_class, stat_class, density_class, cascade_class, events_class
+    
+    # Callback to set initial model card state on page load
+    @app.callback(
+        [
+            Output('model-card-basic', 'className', allow_duplicate=True),
+            Output('model-card-multi_state', 'className', allow_duplicate=True),
+            Output('model-card-statistical', 'className', allow_duplicate=True),
+            Output('model-card-density', 'className', allow_duplicate=True),
+            Output('model-card-cascade', 'className', allow_duplicate=True),
+            Output('model-card-events', 'className', allow_duplicate=True),
+        ],
+        [Input('burstiness-algorithm', 'data')],
+        prevent_initial_call=True
+    )
+    def set_initial_model_card_state(selected_algorithm):
+        """Set initial active state for model cards"""
+        # Default to 'basic' if no algorithm is selected
+        if not selected_algorithm:
+            selected_algorithm = 'basic'
+        
+        basic_class = "burst-model-card active" if selected_algorithm == 'basic' else "burst-model-card"
+        multi_class = "burst-model-card active" if selected_algorithm == 'multi_state' else "burst-model-card"
+        stat_class = "burst-model-card active" if selected_algorithm == 'statistical' else "burst-model-card"
+        density_class = "burst-model-card active" if selected_algorithm == 'density' else "burst-model-card"
+        cascade_class = "burst-model-card active" if selected_algorithm == 'cascade' else "burst-model-card"
+        events_class = "burst-model-card" # Events is always inactive
+        
+        return basic_class, multi_class, stat_class, density_class, cascade_class, events_class
         
     # Callbacks to toggle visibility of algorithm-specific parameters
     @app.callback(

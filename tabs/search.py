@@ -140,49 +140,71 @@ def create_search_tab_layout(db_options: List, min_date: datetime = None, max_da
         ], style={"text-align": "center", "margin-top": "10px", "margin-bottom": "20px"}),
         
         # Results section - initial information area
-        html.Div(id='search-stats-container', className="mt-4", style={"scroll-margin-top": "100px"}, 
-                 children=[html.Div("Enter a search term and click Search", className="text-center")]),
+        html.Div(id='search-stats-container', className="mt-4", style={"scroll-margin-top": "100px"}),
         
-        # Progress indicator for search operations
-        html.Div(id='search-progress-indicator', 
-                 style={'display': 'none', 'text-align': 'center', 'margin': '20px 0',
-                        'padding': '15px', 'background-color': '#f8f9fa', 'border-radius': '8px',
-                        'border-left': f'4px solid {blue_color}'},
-                 children=[
-                     html.H5("🔍 Search in Progress", style={'margin': '0 0 10px 0', 'color': blue_color}),
-                     html.Div(id='search-progress-message', style={'font-size': '14px', 'color': '#666'}),
-                     html.Div([
-                         html.Div(className='progress-bar', style={
-                             'width': '100%', 'height': '4px', 'background-color': '#e9ecef',
-                             'border-radius': '2px', 'margin': '10px 0', 'overflow': 'hidden'
-                         }, children=[
-                             html.Div(className='progress-fill', style={
-                                 'height': '100%', 'background-color': blue_color,
-                                 'width': '0%', 'transition': 'width 0.3s ease',
-                                 'animation': 'loading-progress 2s infinite linear'
-                             })
-                         ])
-                     ])
-                 ]),
-        
-        # Sunburst Chart - centered with minimal bottom margin to reduce gap
+        # Loading message overlay container with background and radar pulse
         html.Div([
-            dcc.Loading(
-                id="loading-search-sunburst",
-                type="default",
-                color=blue_color,  # Match the blue color
-                children=[
-                    html.Div(
-                        dcc.Graph(
-                            id='search-sunburst-chart', 
-                            style={'height': '700px', 'width': '100%', 'max-width': '900px', 'margin': '0 auto'}
-                        ),
-                        className="sunburst-container"
-                    )
-                ]
+            # Semi-transparent background overlay
+            html.Div(style={
+                'position': 'fixed',
+                'top': '0',
+                'left': '0',
+                'width': '100%',
+                'height': '100%',
+                'background-color': 'rgba(0, 0, 0, 0.3)',
+                'z-index': '999'
+            }),
+            # Loading message box
+            html.Div([
+                # Add the radar pulse animation
+                html.Div([
+                    html.Div(className="radar-pulse", children=[
+                        html.Div(className="ring-1"),
+                        html.Div(className="ring-2")
+                    ]),
+                    html.P("🔍 Search in Progress", 
+                           className="text-center mt-4", 
+                           style={'color': blue_color, 'font-weight': 'bold', 'font-size': '18px'}),
+                    html.P(id='search-progress-message', 
+                           className="text-muted text-center", 
+                           style={'font-size': '14px'}),
+                    html.P("💡 Fun fact: If we printed all searchable text, it would reach the moon and back!", 
+                           className="text-info text-center mt-3",
+                           style={'font-style': 'italic', 'font-size': '13px'})
+                ], style={
+                    'background': 'rgba(255, 255, 255, 0.98)',
+                    'border': '2px solid ' + blue_color,
+                    'border-radius': '12px',
+                    'padding': '40px',
+                    'box-shadow': '0 4px 20px rgba(0, 0, 0, 0.15)',
+                    'max-width': '500px',
+                    'margin': '0 auto',
+                    'position': 'relative',
+                    'z-index': '1001'
+                })
+            ], style={
+                'position': 'fixed',
+                'top': '50%',
+                'left': '50%',
+                'transform': 'translate(-50%, -50%)',
+                'z-index': '1001'
+            })
+        ], id="search-loading-messages", 
+           style={
+               'display': 'none'
+           }),
+        
+        # Sunburst Chart container - initially hidden
+        html.Div([
+            html.Div(
+                dcc.Graph(
+                    id='search-sunburst-chart', 
+                    style={'height': '700px', 'width': '100%', 'max-width': '900px', 'margin': '0 auto'}
+                ),
+                className="sunburst-container"
             )
         ], 
-        style={'margin-bottom': '0px', 'width': '100%', 'justify-content': 'center'},
+        style={'margin-bottom': '0px', 'width': '100%', 'justify-content': 'center', 'display': 'none'},
         className="sunburst-chart-container", id="search-results-tabs"),
         
         # Add loading spinner for segment clicks - positioned right after the sunburst chart
@@ -350,7 +372,7 @@ def register_search_callbacks(app):
             return html.P("Enter concepts or ideas. Results will include semantically similar content. (Beta feature)", className="text-muted")
         return ""
 
-    # Progress indicator callback - shows immediately when search starts
+    # Progress indicator callback - shows loading overlay immediately when search starts
     app.clientside_callback(
         """
         function(n_clicks, search_mode, search_term) {
@@ -358,30 +380,20 @@ def register_search_callbacks(app):
                 return [{'display': 'none'}, ''];
             }
             
-            const progress_visible = {
-                'display': 'block', 
-                'text-align': 'center', 
-                'margin': '20px 0',
-                'padding': '15px', 
-                'background-color': '#f8f9fa', 
-                'border-radius': '8px',
-                'border-left': '4px solid #13376f'
-            };
-            
             let message;
             if (search_mode === 'semantic') {
-                message = `🧠 Performing semantic search for '${search_term}'... Finding similar concepts using AI embeddings. This may take 30-60 seconds.`;
+                message = `(Using AI to understand '${search_term}' and find semantically similar content)`;
             } else if (search_mode === 'boolean') {
-                message = `🔍 Processing boolean query '${search_term}'... Searching across ALL data (entire database). This may take 30-90 seconds.`;
+                message = `(Processing boolean query: ${search_term})`;
             } else {
-                message = `🔍 Searching for '${search_term}'... Scanning database with full-text search. This may take 10-20 seconds.`;
+                message = `(Looking for exact matches of '${search_term}')`;
             }
             
-            return [progress_visible, message];
+            return [{'display': 'block'}, message];
         }
         """,
         [
-            Output('search-progress-indicator', 'style', allow_duplicate=True),
+            Output('search-loading-messages', 'style', allow_duplicate=True),
             Output('search-progress-message', 'children', allow_duplicate=True)
         ],
         Input('search-button', 'n_clicks'),
@@ -403,8 +415,8 @@ def register_search_callbacks(app):
             Output('search-results-header', 'style'),
             Output('search-pagination-controls', 'style'),
             Output('search-download-buttons', 'style'),
-            Output('search-progress-indicator', 'style'),
-            Output('search-progress-message', 'children')
+            Output('search-loading-messages', 'style'),
+            Output('search-timeline-container', 'style')
         ],
         Input('search-button', 'n_clicks'),
         [
@@ -435,18 +447,15 @@ def register_search_callbacks(app):
             tuple: Multiple outputs for updating the UI with search results
         """
         # Initialize with empty results
-        empty_fig = go.Figure().update_layout(title="No search results")
-        empty_stats = html.Div("Enter a search term and click Search")
+        empty_fig = go.Figure()
         hidden_style = {'display': 'none'}
-        progress_hidden = {'display': 'none', 'text-align': 'center', 'margin': '20px 0',
-                          'padding': '15px', 'background-color': '#f8f9fa', 'border-radius': '8px',
-                          'border-left': '4px solid #13376f'}
+        loading_hidden = {'display': 'none'}
         
-        # If no search has been performed yet, keep the sunburst visible but hide other components
+        # If no search has been performed yet, hide everything including the sunburst
         if not n_clicks or not search_term:
-            # Let's fix the search-results-tabs style to match the CSS grid layout
-            sunburst_visible_style = {'margin-bottom': '0px', 'width': '100%', 'justify-content': 'center', 'display': 'flex'}
-            return empty_fig, empty_fig, [], empty_stats, sunburst_visible_style, hidden_style, hidden_style, hidden_style, progress_hidden, ""
+            # Return empty content for stats container when no search
+            empty_stats = html.Div("Enter a search term and click Search", className="text-center")
+            return empty_fig, empty_fig, [], empty_stats, hidden_style, hidden_style, hidden_style, hidden_style, loading_hidden, hidden_style
 
         # Create date range tuple if both dates are provided
         date_range = None
@@ -457,10 +466,9 @@ def register_search_callbacks(app):
         df_filtered = fetch_search_category_data(search_mode, search_term, lang_val, db_val, source_type, date_range)
         
         if df_filtered.empty:
-            empty_stats = html.Div(f"No results found for '{search_term}'")
-            # Still show the sunburst container even when empty
-            sunburst_visible_style = {'margin-bottom': '0px', 'width': '100%', 'justify-content': 'center', 'display': 'flex'}
-            return empty_fig, empty_fig, [], empty_stats, sunburst_visible_style, hidden_style, hidden_style, hidden_style, progress_hidden, ""
+            empty_stats = html.Div(f"No results found for '{search_term}'", className="text-center")
+            # Hide sunburst when no results
+            return empty_fig, empty_fig, [], empty_stats, hidden_style, hidden_style, hidden_style, hidden_style, loading_hidden, hidden_style
 
         # Create sunburst chart for category distribution - Using the same function that the Explore tab uses
         # This ensures visual consistency across the dashboard
@@ -493,7 +501,7 @@ def register_search_callbacks(app):
             empty_stats = html.Div(f"Search returned category matches but no text chunks for '{search_term}'")
             # Use the correct flex display style for the sunburst container
             sunburst_visible_style = {'margin-bottom': '0px', 'width': '100%', 'justify-content': 'center', 'display': 'flex'}
-            return fig_sunburst, empty_fig, [], empty_stats, sunburst_visible_style, hidden_style, hidden_style, hidden_style, progress_hidden, ""
+            return fig_sunburst, empty_fig, [], empty_stats, sunburst_visible_style, hidden_style, hidden_style, hidden_style, loading_hidden, hidden_style
 
         # Build timeline chart
         df_chunks['date'] = pd.to_datetime(df_chunks['date'], errors='coerce')
@@ -538,7 +546,7 @@ def register_search_callbacks(app):
         logging.info(f"Search results updated. Found {len(df_chunks)} chunks")
         # Make the search-results-header always visible when there are results
         show_header_style = {'display': 'block', 'scroll-margin-top': '100px'}
-        return fig_sunburst, fig_timeline, df_chunks.to_dict('records'), search_stats, sunburst_visible_style, show_header_style, pagination_style, show_style, progress_hidden, ""
+        return fig_sunburst, fig_timeline, df_chunks.to_dict('records'), search_stats, sunburst_visible_style, show_header_style, pagination_style, show_style, loading_hidden, show_style
         
     # Display search results with pagination
     @app.callback(
