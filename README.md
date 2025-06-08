@@ -69,3 +69,7 @@ The dashboard is optimized for deployment on Heroku:
 4. The app will automatically start in demo mode if no valid database connection is available
 
 See [HEROKU_DEPLOYMENT.md](HEROKU_DEPLOYMENT.md) for detailed deployment instructions.
+## License
+
+This project is licensed under the terms of the MIT License. See [LICENSE](LICENSE) for more information.
+
