@@ -21,11 +21,11 @@ VALID_USERNAME_PASSWORD_PAIRS = {
 
 # Database configuration - in production, use environment variables
 DB_CONFIG = {
-    'user': 'postgres',
-    'password': os.environ.get('DB_PASSWORD', 'GoNKJWp64NkMr9UdgCnT'),  # Use environment variable in production
-    'host': os.environ.get('DB_HOST', '138.201.62.161'),
-    'port': os.environ.get('DB_PORT', '5434'),
-    'database': os.environ.get('DB_NAME', 'russian_ukrainian_war'),
+    'user': os.environ.get('DB_USER', 'postgres'),
+    'password': os.environ.get('DB_PASSWORD'),
+    'host': os.environ.get('DB_HOST'),
+    'port': os.environ.get('DB_PORT'),
+    'database': os.environ.get('DB_NAME'),
     'pool_size': 5,
     'max_overflow': 10,
     'pool_timeout': 30,

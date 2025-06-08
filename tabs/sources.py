@@ -117,14 +117,16 @@ def create_sources_tab_layout(db_options: List, min_date: datetime = None, max_d
                     'max-width': '500px',
                     'margin': '0 auto',
                     'position': 'relative',
-                    'z-index': '1001'
+                    # Ensure loading message appears above the global radar sweep
+                    # which uses z-index 9999 in dash-loading-monitor.js
+                    'z-index': '10010'
                 })
             ], style={
                 'position': 'fixed',
                 'top': '50%',
                 'left': '50%',
                 'transform': 'translate(-50%, -50%)',
-                'z-index': '1001'
+                'z-index': '10010'
             })
         ], id="sources-loading-messages", 
            style={
