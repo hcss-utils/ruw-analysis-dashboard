@@ -32,12 +32,7 @@ body:has(#chunks-selection-title:contains("Text Chunks for:")) .dash-loading-rad
     display: none !important;
 }
 
-/* Force hide after 5 seconds as fallback */
-.dash-loading-radar-sweep {
-    animation: hideAfterDelay 5s forwards;
-}
 
-@keyframes hideAfterDelay {
-    0%, 99% { opacity: 1; }
-    100% { opacity: 0; display: none; }
-}
+/* Previously the radar sweep was forced to hide after five seconds. This broke
+   the loading indication for long-running queries in the Sources tab.
+   Remove that animation so the sweep persists until loading completes. */
