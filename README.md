@@ -53,7 +53,16 @@ For detailed information on specific features, refer to these documents:
    ```
 3. Set environment variables
    ```bash
-   export DATABASE_URL=your_database_url  # or "demo" for demo mode
+   # For direct database configuration
+   export DB_USER=postgres
+   export DB_PASSWORD=your_password
+   export DB_HOST=your_db_host
+   export DB_PORT=5432
+   export DB_NAME=russian_ukrainian_war
+
+   # Or use DATABASE_URL for a full connection string ("demo" for demo mode)
+   export DATABASE_URL=your_database_url
+
    export PORT=8051  # Optional, defaults to 8051
    ```
 4. Run the application
