@@ -45,17 +45,19 @@ For detailed information on specific features, refer to these documents:
 ### Installation
 
 1. Clone the repository
-2. Install dependencies:
-   ```
+2. Create a virtual environment and install the dependencies
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
    pip install -r requirements.txt
    ```
-3. Set environment variables:
-   ```
+3. Set environment variables
+   ```bash
    export DATABASE_URL=your_database_url  # or "demo" for demo mode
    export PORT=8051  # Optional, defaults to 8051
    ```
-4. Run the application:
-   ```
+4. Run the application
+   ```bash
    python app.py
    ```
 
