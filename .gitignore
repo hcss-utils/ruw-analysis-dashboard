@@ -1,1 +1,12 @@
 **/.claude/settings.local.json
+
+# Python artifacts
+__pycache__/
+*.pyc
+
+# Environment files
+.env
+
+# Large data files
+data/
+*.csv
