@@ -30,15 +30,17 @@ excluded_keywords: Set[str] = DEFAULT_EXCLUDE_KEYWORDS
 def load_mapping_files(
     consolidated_path: Optional[str] = None,
     cross_type_path: Optional[str] = None,
-    exclude_keywords: Optional[Set[str]] = None
+    exclude_keywords: Optional[Set[str]] = None,
+    max_memory_mb: int = 100
 ) -> Tuple[bool, str]:
     """
-    Load keyword mapping files and build the mapping dictionaries.
+    Load keyword mapping files with memory limit.
     
     Args:
         consolidated_path: Path to consolidated keywords CSV
         cross_type_path: Path to cross-type entities CSV
         exclude_keywords: Set of keywords to exclude
+        max_memory_mb: Maximum memory to use in MB (default 100MB)
         
     Returns:
         Tuple of (success, message)
@@ -57,6 +59,12 @@ def load_mapping_files(
     keyword_to_canonical = {}
     canonical_keywords = set()
     
+    # Initialize memory tracking
+    import sys
+    current_memory = 0
+    max_entries = 0
+    max_memory_bytes = max_memory_mb * 1024 * 1024
+    
     try:
         # Check if files exist
         consolidated_exists = os.path.exists(consolidated_path)
@@ -72,6 +80,10 @@ def load_mapping_files(
                 df_consolidated = pd.read_csv(consolidated_path)
                 logging.info(f"Loaded consolidated keywords from {consolidated_path}")
                 
+                # Sort by frequency if available to keep most important keywords
+                if 'frequency' in df_consolidated.columns:
+                    df_consolidated = df_consolidated.sort_values('frequency', ascending=False)
+                
                 # Process consolidated keywords: canonical_keyword,frequency
                 if 'canonical_keyword' in df_consolidated.columns:
                     for idx, row in df_consolidated.iterrows():
@@ -80,9 +92,18 @@ def load_mapping_files(
                             canonical = str(row['canonical_keyword']).strip().lower()
                         else:
                             canonical = str(row['canonical_keyword']).strip().lower()
+                        
+                        # Estimate memory usage (rough approximation)
+                        entry_size = sys.getsizeof(canonical) * 2  # For both key and value
+                        if current_memory + entry_size > max_memory_bytes:
+                            logging.info(f"Memory limit reached. Loaded {max_entries} keywords.")
+                            break
+                        
                         canonical_keywords.add(canonical)
                         # Map canonical to itself
                         keyword_to_canonical[canonical] = canonical
+                        current_memory += entry_size
+                        max_entries += 1
                 else:
                     logging.warning(f"Invalid format in {consolidated_path}, missing 'canonical_keyword' column")
             except Exception as e:
@@ -90,10 +111,14 @@ def load_mapping_files(
                 return False, f"Error loading consolidated keywords: {str(e)}"
         
         # Load cross-type entities if available
-        if cross_type_exists:
+        if cross_type_exists and current_memory < max_memory_bytes:
             try:
                 df_cross_type = pd.read_csv(cross_type_path)
                 logging.info(f"Loaded cross-type entities from {cross_type_path}")
+                
+                # Sort by frequency if available
+                if 'frequency' in df_cross_type.columns:
+                    df_cross_type = df_cross_type.sort_values('frequency', ascending=False)
                 
                 # Extract mapping data from cross-type entities
                 # Assuming format: variant,canonical or similar
@@ -108,16 +133,26 @@ def load_mapping_files(
                         canonical = str(row[canonical_col]).strip().lower()
                         
                         if variant and canonical:
+                            # Check memory limit
+                            entry_size = sys.getsizeof(variant) + sys.getsizeof(canonical)
+                            if current_memory + entry_size > max_memory_bytes:
+                                logging.info(f"Memory limit reached. Total loaded: {max_entries} entries.")
+                                break
+                            
                             keyword_to_canonical[variant] = canonical
                             canonical_keywords.add(canonical)
+                            current_memory += entry_size
+                            max_entries += 1
                 else:
                     logging.warning(f"Invalid format in {cross_type_path}, expected at least 2 columns")
             except Exception as e:
                 logging.error(f"Error loading cross-type entities: {str(e)}")
                 return False, f"Error loading cross-type entities: {str(e)}"
         
+        memory_used_mb = current_memory / (1024 * 1024)
         logging.info(f"Loaded {len(keyword_to_canonical)} keyword mappings and {len(canonical_keywords)} canonical terms")
-        return True, f"Successfully loaded keyword mappings"
+        logging.info(f"Memory used: {memory_used_mb:.1f}MB of {max_memory_mb}MB limit")
+        return True, f"Successfully loaded keyword mappings (using {memory_used_mb:.1f}MB)"
     
     except Exception as e:
         logging.error(f"Error loading mapping files: {str(e)}")

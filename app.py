@@ -119,22 +119,21 @@ def create_dash_app() -> dash.Dash:
     # Comment this out during development
     # auth = dash_auth.BasicAuth(app, VALID_USERNAME_PASSWORD_PAIRS)
     
-    # Load keyword mapping files ONLY ONCE
-    # TEMPORARILY DISABLED to reduce memory usage
+    # Load keyword mapping files ONLY ONCE with memory limit
     # Check if already loaded to avoid reloading in debug mode
-    # if not hasattr(app, '_keywords_loaded'):
-    #     try:
-    #         success, message = load_mapping_files()
-    #         if success:
-    #             logging.info(f"Keyword mapping files loaded successfully: {message}")
-    #             mapping_status = get_mapping_status()
-    #             logging.info(f"Mapping status: {mapping_status}")
-    #             app._keywords_loaded = True
-    #         else:
-    #             logging.warning(f"Failed to load keyword mapping files: {message}")
-    #     except Exception as e:
-    #         logging.error(f"Error loading keyword mapping files: {e}")
-    logging.info("Keyword mapping loading disabled to reduce memory usage")
+    if not hasattr(app, '_keywords_loaded'):
+        try:
+            # Load with 100MB memory limit
+            success, message = load_mapping_files(max_memory_mb=100)
+            if success:
+                logging.info(f"Keyword mapping files loaded successfully: {message}")
+                mapping_status = get_mapping_status()
+                logging.info(f"Mapping status: {mapping_status}")
+                app._keywords_loaded = True
+            else:
+                logging.warning(f"Failed to load keyword mapping files: {message}")
+        except Exception as e:
+            logging.error(f"Error loading keyword mapping files: {e}")
     
     # Fetch initial data
     db_options = []
