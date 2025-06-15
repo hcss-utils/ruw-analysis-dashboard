@@ -28,7 +28,7 @@ DB_CONFIG = {
     'database': os.environ.get('DB_NAME'),
     'pool_size': 5,
     'max_overflow': 10,
-    'pool_timeout': 30,
+    'pool_timeout': 300,  # Increased from 30 to 300 seconds
     'pool_recycle': 1800  # Recycle connections after 30 minutes
 }
 
