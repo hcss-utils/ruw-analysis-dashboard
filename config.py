@@ -67,6 +67,26 @@ DATABASE_DISPLAY_MAP = {
     'telegram_Official': 'telegram_official'
 }
 
+# Database colors - all legible on white background
+DATABASE_COLORS = {
+    'telegram_milbloggers': '#E74C3C',     # Bright Red
+    'telegram_War correspondent': '#E74C3C', # Same as milbloggers
+    'telegram_official': '#3498DB',         # Bright Blue
+    'telegram_Official': '#3498DB',         # Same as official
+    'integrum': '#27AE60',                  # Emerald Green
+    'vk': '#9B59B6',                        # Purple
+    'twitter': '#1DA1F2',                   # Twitter Blue
+    'facebook': '#1877F2',                  # Facebook Blue
+    'youtube': '#FF0000',                   # YouTube Red
+    'instagram': '#E4405F',                 # Instagram Pink
+    'tiktok': '#000000',                    # TikTok Black
+    'reddit': '#FF4500',                    # Reddit Orange
+    'military': '#2C3E50',                  # Dark Blue Gray
+    'academic': '#16A085',                  # Teal
+    'news': '#F39C12',                      # Orange
+    'default': '#7F8C8D'                    # Gray for unknown databases
+}
+
 # Source type filter definitions
 SOURCE_TYPE_FILTERS = {
     'Primary': "(ud.database LIKE 'telegram%' OR ud.database = 'vk')",

@@ -5,6 +5,7 @@
     // Configuration
     const DEBUG = true; // Set to false in production
     const SWEEP_CLEANUP_DELAY = 500; // ms to wait after last loading element disappears
+    const EXPLORE_TAB_CHECK_INTERVAL = 1000; // Check explore tab every second
     
     // State tracking
     const loadingStates = {
@@ -42,6 +43,9 @@
         
         // Add CSS for radar sweep if not present
         addRadarSweepStyles();
+        
+        // Start periodic check for stuck loading states
+        startPeriodicCleanup();
     }
     
     // Intercept Dash's loading state changes
@@ -117,6 +121,39 @@
                         } else {
                             loadingStates.components.delete(id);
                             checkAndHideRadarSweep();
+                        }
+                    }
+                    
+                    // Check for tab-specific content containers becoming visible
+                    if (mutation.attributeName === 'style' && target.id) {
+                        // Check if this is a results container being shown
+                        if (target.id.includes('-results-tabs') || target.id.includes('-content-container')) {
+                            const style = target.getAttribute('style');
+                            if (style && style.includes('display: block')) {
+                                log(`Tab content container ${target.id} is now visible - hiding radar sweep`);
+                                // Clear all loading states for this tab
+                                const tabPrefix = target.id.split('-')[0];
+                                loadingStates.components.forEach((value, key) => {
+                                    if (key.includes(tabPrefix)) {
+                                        loadingStates.components.delete(key);
+                                    }
+                                });
+                                // Force hide the radar sweep
+                                hideRadarSweep();
+                            }
+                        }
+                    }
+                    
+                    // Special handling for dcc.Loading components
+                    if (mutation.attributeName === 'class' && target.classList) {
+                        // Check if this is a dcc.Loading spinner being hidden
+                        if (target.classList.contains('_dash-loading-callback') && 
+                            !target.classList.contains('_dash-is-loading')) {
+                            log(`Loading callback completed for element`);
+                            // Force check and hide radar sweep
+                            setTimeout(() => {
+                                checkAndHideRadarSweep();
+                            }, 100);
                         }
                     }
                     
@@ -430,6 +467,39 @@
             `;
             document.head.appendChild(style);
         }
+    }
+    
+    // Start periodic cleanup to catch stuck loading states
+    function startPeriodicCleanup() {
+        setInterval(() => {
+            // Check if we're on the Explore tab and if chunks are loaded
+            const activeTab = document.querySelector('[data-tab].active, .tab-content.active');
+            if (activeTab && activeTab.id && activeTab.id.includes('explore')) {
+                // Check if chunks container has content
+                const chunksContainer = document.querySelector('#text-chunks-container');
+                if (chunksContainer && chunksContainer.children.length > 0) {
+                    // Check if there's still a loading spinner visible
+                    const loadingSpinner = document.querySelector('#loading-chunks ._dash-loading, #loading-chunks ._dash-loading-callback');
+                    if (!loadingSpinner) {
+                        // Content is loaded but radar might still be showing
+                        log('Explore tab content detected without spinner - forcing cleanup');
+                        hideRadarSweep();
+                    }
+                }
+            }
+            
+            // Also check for any orphaned loading states
+            if (loadingStates.components.size > 0 || loadingStates.graphs.size > 0) {
+                const now = Date.now();
+                if (now - loadingStates.lastActivity > 5000) { // 5 seconds of no activity
+                    log('Cleaning up orphaned loading states');
+                    loadingStates.components.clear();
+                    loadingStates.graphs.clear();
+                    loadingStates.callbacks.clear();
+                    hideRadarSweep();
+                }
+            }
+        }, EXPLORE_TAB_CHECK_INTERVAL);
     }
     
     // Expose for debugging
