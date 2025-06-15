@@ -93,10 +93,11 @@ def load_mapping_files(
                         else:
                             canonical = str(row['canonical_keyword']).strip().lower()
                         
-                        # Estimate memory usage (rough approximation)
-                        entry_size = sys.getsizeof(canonical) * 2  # For both key and value
+                        # Estimate memory usage (include overhead)
+                        # Each dict entry uses ~300 bytes on average (key, value, hash, pointers)
+                        entry_size = 300 + len(canonical) * 2  # Overhead + string chars
                         if current_memory + entry_size > max_memory_bytes:
-                            logging.info(f"Memory limit reached. Loaded {max_entries} keywords.")
+                            logging.info(f"Memory limit reached at {current_memory / (1024*1024):.1f}MB. Loaded {max_entries} keywords.")
                             break
                         
                         canonical_keywords.add(canonical)
@@ -134,9 +135,9 @@ def load_mapping_files(
                         
                         if variant and canonical:
                             # Check memory limit
-                            entry_size = sys.getsizeof(variant) + sys.getsizeof(canonical)
+                            entry_size = 300 + len(variant) + len(canonical)  # Overhead + string chars
                             if current_memory + entry_size > max_memory_bytes:
-                                logging.info(f"Memory limit reached. Total loaded: {max_entries} entries.")
+                                logging.info(f"Memory limit reached at {current_memory / (1024*1024):.1f}MB. Total loaded: {max_entries} entries.")
                                 break
                             
                             keyword_to_canonical[variant] = canonical

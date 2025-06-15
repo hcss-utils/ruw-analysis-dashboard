@@ -123,8 +123,8 @@ def create_dash_app() -> dash.Dash:
     # Check if already loaded to avoid reloading in debug mode
     if not hasattr(app, '_keywords_loaded'):
         try:
-            # Load with 100MB memory limit
-            success, message = load_mapping_files(max_memory_mb=100)
+            # Load with 50MB memory limit to be conservative
+            success, message = load_mapping_files(max_memory_mb=50)
             if success:
                 logging.info(f"Keyword mapping files loaded successfully: {message}")
                 mapping_status = get_mapping_status()
