@@ -261,6 +261,15 @@ def create_documents_visualizations(data: Dict) -> html.Div:
     logging.info(f"Documents visualization data keys: {list(data.keys()) if data else 'None'}")
     logging.info(f"Total documents: {data.get('total_documents', 0) if data else 0}")
     
+    # Check for errors
+    if data and 'error' in data:
+        return html.Div([
+            html.H5("Error Loading Documents Data", className="text-danger"),
+            html.P(f"The query timed out or encountered an error. This may be due to the large dataset size."),
+            html.P(f"Error details: {data['error']}", className="text-muted"),
+            html.P("Please try applying filters to reduce the data size or contact support.")
+        ], className="alert alert-warning mt-3")
+    
     if not data or data.get('total_documents', 0) == 0:
         return html.Div([
             html.P("No documents found with the current filters.", className="text-muted text-center mt-5")
@@ -1610,29 +1619,61 @@ def register_sources_tab_callbacks(app):
                 filter_desc.append(f"Date Range: {date_range[0]} to {date_range[1]}")
         
             # Create stats HTML with filter description
-            corpus_stats = fetch_corpus_stats()
+            try:
+                corpus_stats = fetch_corpus_stats()
+            except Exception as e:
+                logging.error(f"Error fetching corpus stats: {e}")
+                corpus_stats = {
+                    "docs_count": "Loading...",
+                    "docs_rel_count": "Loading...",
+                    "chunks_count": "Loading...",
+                    "chunks_rel_count": "Loading...",
+                    "tax_levels": "Loading...",
+                    "items_count": "Loading..."
+                }
+            
             stats_html = html.Div([
-                html.P(f"Docs: {corpus_stats['docs_count']:,} ({corpus_stats['docs_rel_count']:,} rel) | Chunks: {corpus_stats['chunks_count']:,} ({corpus_stats['chunks_rel_count']:,} rel) | Tax: {corpus_stats['tax_levels']:,} levels | Items: {corpus_stats['items_count']:,}"),
+                html.P(f"Docs: {corpus_stats['docs_count']:,} ({corpus_stats['docs_rel_count']:,} rel) | Chunks: {corpus_stats['chunks_count']:,} ({corpus_stats['chunks_rel_count']:,} rel) | Tax: {corpus_stats['tax_levels']:,} levels | Items: {corpus_stats['items_count']:,}") if isinstance(corpus_stats['docs_count'], int) else html.P("Loading corpus statistics..."),
                 html.P(f"Filters: {' | '.join(filter_desc) if filter_desc else 'None'}", className="text-muted")
             ])
             
-            # Fetch filtered data
+            # Fetch filtered data with timeout protection
             logging.info(f"Starting to fetch data for Sources tab with filters")
             
-            documents_data = fetch_documents_data(lang_val, db_val, source_type, date_range)
-            logging.info("Documents data fetched")
+            try:
+                documents_data = fetch_documents_data(lang_val, db_val, source_type, date_range)
+                logging.info("Documents data fetched")
+            except Exception as e:
+                logging.error(f"Error fetching documents data: {e}")
+                documents_data = {"error": str(e)}
             
-            chunks_data = fetch_chunks_data(lang_val, db_val, source_type, date_range)
-            logging.info("Chunks data fetched")
+            try:
+                chunks_data = fetch_chunks_data(lang_val, db_val, source_type, date_range)
+                logging.info("Chunks data fetched")
+            except Exception as e:
+                logging.error(f"Error fetching chunks data: {e}")
+                chunks_data = {"error": str(e)}
             
-            taxonomy_data = fetch_taxonomy_combinations(lang_val, db_val, source_type, date_range)
-            logging.info("Taxonomy data fetched")
+            try:
+                taxonomy_data = fetch_taxonomy_combinations(lang_val, db_val, source_type, date_range)
+                logging.info("Taxonomy data fetched")
+            except Exception as e:
+                logging.error(f"Error fetching taxonomy data: {e}")
+                taxonomy_data = {"error": str(e)}
             
-            keywords_data = fetch_keywords_data(lang_val, db_val, source_type, date_range)
-            logging.info("Keywords data fetched")
+            try:
+                keywords_data = fetch_keywords_data(lang_val, db_val, source_type, date_range)
+                logging.info("Keywords data fetched")
+            except Exception as e:
+                logging.error(f"Error fetching keywords data: {e}")
+                keywords_data = {"error": str(e)}
             
-            named_entities_data = fetch_named_entities_data(lang_val, db_val, source_type, date_range)
-            logging.info("Named entities data fetched")
+            try:
+                named_entities_data = fetch_named_entities_data(lang_val, db_val, source_type, date_range)
+                logging.info("Named entities data fetched")
+            except Exception as e:
+                logging.error(f"Error fetching named entities data: {e}")
+                named_entities_data = {"error": str(e)}
             
             # Create visualizations for each subtab
             documents_viz = create_documents_visualizations(documents_data)
