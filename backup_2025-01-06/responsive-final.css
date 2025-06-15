@@ -1,0 +1,282 @@
+/* Final Responsive Overrides for All Tabs */
+
+/* Ensure no horizontal scrolling */
+html, body {
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+}
+
+/* Main container responsive */
+#react-root, #_dash-app-content {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+/* ===== Header Responsive ===== */
+@media (max-width: 768px) {
+    .app-header {
+        flex-direction: column !important;
+        text-align: center !important;
+        padding: 10px !important;
+    }
+    
+    .app-header img {
+        max-height: 40px !important;
+        margin: 5px !important;
+    }
+    
+    .app-header h2 {
+        font-size: 1.25rem !important;
+        margin: 10px 0 !important;
+    }
+}
+
+/* ===== Tab Navigation Responsive ===== */
+@media (max-width: 768px) {
+    .dash-tabs {
+        display: flex !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        scroll-behavior: smooth !important;
+    }
+    
+    .dash-tab {
+        white-space: nowrap !important;
+        flex-shrink: 0 !important;
+        padding: 6px 10px !important;
+        font-size: 0.85rem !important;
+    }
+}
+
+/* ===== Filter Cards Responsive ===== */
+@media (max-width: 992px) {
+    .filter-card {
+        margin-bottom: 15px !important;
+    }
+    
+    .filter-card .row {
+        margin: 0 !important;
+    }
+    
+    .filter-card .col {
+        padding: 5px !important;
+        margin-bottom: 10px !important;
+    }
+    
+    /* Date picker responsive */
+    .DateRangePickerInput {
+        width: 100% !important;
+        max-width: 300px !important;
+    }
+    
+    .DateInput {
+        width: 45% !important;
+    }
+}
+
+/* ===== Graphs Responsive ===== */
+.dash-graph {
+    width: 100% !important;
+    height: auto !important;
+}
+
+@media (max-width: 768px) {
+    /* Set minimum heights for graphs on mobile */
+    .dash-graph {
+        min-height: 300px !important;
+        max-height: 500px !important;
+    }
+    
+    /* Sunburst specific */
+    #explore-sunburst-chart {
+        height: 400px !important;
+    }
+    
+    /* Timeline specific */
+    #timeline-chart {
+        height: 300px !important;
+    }
+    
+    /* Comparison charts */
+    #compare-radar-chart,
+    #compare-bar-chart {
+        height: 350px !important;
+    }
+    
+    /* Burst charts */
+    .burst-timeline-graph {
+        height: 350px !important;
+    }
+}
+
+/* ===== Cards and Content Responsive ===== */
+@media (max-width: 768px) {
+    .card {
+        margin-bottom: 15px !important;
+    }
+    
+    .card-body {
+        padding: 15px !important;
+    }
+    
+    .card-header {
+        padding: 10px 15px !important;
+        font-size: 1rem !important;
+    }
+    
+    /* Reduce padding on mobile */
+    .container-fluid {
+        padding-left: 10px !important;
+        padding-right: 10px !important;
+    }
+}
+
+/* ===== Tables Responsive ===== */
+.dash-table-container {
+    width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+}
+
+@media (max-width: 768px) {
+    .dash-table-container {
+        font-size: 0.85rem !important;
+    }
+    
+    /* Make table cells more compact on mobile */
+    .dash-cell {
+        padding: 8px !important;
+        min-width: 100px !important;
+    }
+}
+
+/* ===== Sources Tab Specific ===== */
+@media (max-width: 768px) {
+    #sources-loading-overlay .loading-joke {
+        font-size: 0.8rem !important;
+    }
+    
+    #sources-subtabs .tab {
+        font-size: 0.85rem !important;
+        padding: 5px 8px !important;
+    }
+}
+
+/* ===== Search Tab Specific ===== */
+@media (max-width: 768px) {
+    #search-input {
+        font-size: 16px !important; /* Prevents zoom on iOS */
+    }
+    
+    .search-result-item {
+        padding: 10px !important;
+        margin-bottom: 10px !important;
+    }
+    
+    .search-snippet {
+        font-size: 0.85rem !important;
+        line-height: 1.4 !important;
+    }
+}
+
+/* ===== Compare Tab Specific ===== */
+@media (max-width: 992px) {
+    /* Stack comparison controls vertically */
+    .compare-controls .row {
+        flex-direction: column !important;
+    }
+    
+    .compare-controls .col {
+        width: 100% !important;
+        margin-bottom: 15px !important;
+    }
+}
+
+/* ===== Burstiness Tab Specific ===== */
+@media (max-width: 992px) {
+    /* Ensure horizontal layout works on tablets */
+    #burstiness-controls-row {
+        flex-wrap: wrap !important;
+    }
+    
+    #burstiness-controls-row > div {
+        width: 100% !important;
+        margin-bottom: 15px !important;
+    }
+}
+
+/* ===== Modal Responsive ===== */
+@media (max-width: 768px) {
+    .modal-dialog {
+        margin: 10px !important;
+        max-width: calc(100% - 20px) !important;
+    }
+    
+    .modal-content {
+        border-radius: 8px !important;
+    }
+    
+    .modal-header,
+    .modal-body,
+    .modal-footer {
+        padding: 15px !important;
+    }
+    
+    .modal-title {
+        font-size: 1.1rem !important;
+    }
+}
+
+/* ===== Loading States Responsive ===== */
+@media (max-width: 768px) {
+    ._dash-loading-callback::after {
+        width: 30px !important;
+        height: 30px !important;
+    }
+    
+    .radar-pulse {
+        width: 60px !important;
+        height: 60px !important;
+    }
+}
+
+/* ===== Utility Classes ===== */
+@media (max-width: 768px) {
+    /* Hide on mobile */
+    .hide-mobile {
+        display: none !important;
+    }
+    
+    /* Reduce margins on mobile */
+    .mt-4 {
+        margin-top: 1rem !important;
+    }
+    
+    .mb-4 {
+        margin-bottom: 1rem !important;
+    }
+    
+    .mt-3 {
+        margin-top: 0.75rem !important;
+    }
+    
+    .mb-3 {
+        margin-bottom: 0.75rem !important;
+    }
+}
+
+/* ===== Print Styles ===== */
+@media print {
+    /* Hide navigation and controls when printing */
+    .dash-tabs,
+    .filter-card,
+    .btn,
+    .modal {
+        display: none !important;
+    }
+    
+    /* Ensure graphs print properly */
+    .dash-graph {
+        page-break-inside: avoid !important;
+    }
+}
