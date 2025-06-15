@@ -296,31 +296,31 @@ def fetch_documents_data(
                 'relevance_rate': relevance_rate,
                 'earliest_date': earliest_date,
                 'latest_date': latest_date,
-                'lang_distribution': {
+                'by_language': {
                     'labels': lang_labels,
                     'values': lang_values,
                     'percentages': lang_percentages
                 },
-                'lang_relevant_distribution': {
+                'by_language_relevant': {
                     'labels': lang_relevant_labels,
                     'values': lang_relevant_values,
                     'percentages': lang_relevant_percentages
                 },
-                'db_distribution': {
+                'top_databases': {
                     'labels': db_labels,
                     'values': db_values,
                     'percentages': db_percentages
                 },
-                'db_relevant_distribution': {
+                'top_databases_relevant': {
                     'labels': db_relevant_labels,
                     'values': db_relevant_values,
                     'percentages': db_relevant_percentages
                 },
-                'time_series': {
+                'time_series_relevant': {
                     'labels': time_series_labels,
                     'values': time_series_values
                 },
-                'db_relevance_breakdown': db_relevance_data
+                'per_database_relevance': {db['database']: db for db in db_relevance_data}
             }
             
             end_time = time.time()
@@ -336,12 +336,12 @@ def fetch_documents_data(
             'relevance_rate': 0,
             'earliest_date': 'N/A',
             'latest_date': 'N/A',
-            'lang_distribution': {'labels': [], 'values': [], 'percentages': []},
-            'lang_relevant_distribution': {'labels': [], 'values': [], 'percentages': []},
-            'db_distribution': {'labels': [], 'values': [], 'percentages': []},
-            'db_relevant_distribution': {'labels': [], 'values': [], 'percentages': []},
-            'time_series': {'labels': [], 'values': []},
-            'db_relevance_breakdown': []
+            'by_language': {'labels': [], 'values': [], 'percentages': []},
+            'by_language_relevant': {'labels': [], 'values': [], 'percentages': []},
+            'top_databases': {'labels': [], 'values': [], 'percentages': []},
+            'top_databases_relevant': {'labels': [], 'values': [], 'percentages': []},
+            'time_series_relevant': {'labels': [], 'values': []},
+            'per_database_relevance': {}
         }
 
 
@@ -473,6 +473,20 @@ def fetch_chunks_data(
                     db_relevant_values.append(int(row['relevant_count']))
             db_relevant_percentages = [round((v / relevant_chunks * 100), 1) if relevant_chunks > 0 else 0 for v in db_relevant_values]
             
+            # Build per-database relevance breakdown
+            per_db_relevance = {}
+            for idx, row in db_df.iterrows():
+                db_name = row['database']
+                total = int(row['total_count'])
+                relevant = int(row['relevant_count'])
+                irrelevant = total - relevant
+                per_db_relevance[db_name] = {
+                    'total': total,
+                    'relevant': relevant,
+                    'irrelevant': irrelevant,
+                    'relevance_rate': round((relevant / total * 100), 1) if total > 0 else 0
+                }
+            
             # Get average chunks per document
             avg_query = f"""
             SELECT 
@@ -493,26 +507,27 @@ def fetch_chunks_data(
                 'relevance_rate': relevance_rate,
                 'avg_chunks_per_document': round(avg_chunks, 1),
                 'avg_chunk_length': avg_chunk_length,
-                'lang_distribution': {
+                'by_language': {
                     'labels': lang_labels,
                     'values': lang_values,
                     'percentages': lang_percentages
                 },
-                'lang_relevant_distribution': {
+                'by_language_relevant': {
                     'labels': lang_relevant_labels,
                     'values': lang_relevant_values,
                     'percentages': lang_relevant_percentages
                 },
-                'db_distribution': {
+                'top_databases': {
                     'labels': db_labels,
                     'values': db_values,
                     'percentages': db_percentages
                 },
-                'db_relevant_distribution': {
+                'top_databases_relevant': {
                     'labels': db_relevant_labels,
                     'values': db_relevant_values,
                     'percentages': db_relevant_percentages
-                }
+                },
+                'per_database_relevance': per_db_relevance
             }
             
             end_time = time.time()
@@ -528,10 +543,11 @@ def fetch_chunks_data(
             'relevance_rate': 0,
             'avg_chunks_per_document': 0,
             'avg_chunk_length': 0,
-            'lang_distribution': {'labels': [], 'values': [], 'percentages': []},
-            'lang_relevant_distribution': {'labels': [], 'values': [], 'percentages': []},
-            'db_distribution': {'labels': [], 'values': [], 'percentages': []},
-            'db_relevant_distribution': {'labels': [], 'values': [], 'percentages': []}
+            'by_language': {'labels': [], 'values': [], 'percentages': []},
+            'by_language_relevant': {'labels': [], 'values': [], 'percentages': []},
+            'top_databases': {'labels': [], 'values': [], 'percentages': []},
+            'top_databases_relevant': {'labels': [], 'values': [], 'percentages': []},
+            'per_database_relevance': {}
         }
 
 
@@ -835,7 +851,12 @@ def fetch_named_entities_data(
                     'labels': dist_labels,
                     'values': dist_values
                 },
-                'avg_entities_per_chunk': 12.3  # Typical average
+                'avg_entities_per_chunk': 12.3,  # Typical average
+                'top_entities_by_type': {
+                    'ORG': top_by_type['ORG'][:15],
+                    'LOC': top_by_type['GPE'][:15],  # Map GPE to LOC
+                    'PER': top_by_type['PERSON'][:15]  # Map PERSON to PER
+                }
             }
             
             end_time = time.time()
