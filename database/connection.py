@@ -151,10 +151,10 @@ def create_db_engine() -> Optional[Engine]:
         return None
         
     try:
-        # Add timeout for Heroku
+        # Add timeout for Heroku - increase to 120 seconds for complex queries
         connect_args = {}
         if 'DYNO' in os.environ:
-            connect_args = {'connect_timeout': 25, 'options': '-c statement_timeout=25000'}
+            connect_args = {'connect_timeout': 120, 'options': '-c statement_timeout=120000'}
         
         engine = create_engine(
             connection_string,
