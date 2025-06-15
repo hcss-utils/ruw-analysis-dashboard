@@ -16,6 +16,10 @@ import os
 import sys
 from datetime import datetime
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
 # Apply Heroku optimizations if on Heroku
 if 'DYNO' in os.environ:
     import gc
@@ -567,8 +571,15 @@ def main():
     """
     try:
         port = int(os.environ.get("PORT", 8051))
+        debug_mode = os.environ.get("DEBUG", "False").lower() == "true"
+        
+        if debug_mode:
+            logging.info("Running in DEBUG mode with auto-reloading enabled")
+            # In debug mode, disable caching for static files
+            app.server.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+        
         # Use app.run() instead of app.run_server()
-        app.run(debug=False, host='0.0.0.0', port=port)  # Disable debug to avoid double loading
+        app.run(debug=debug_mode, host='0.0.0.0', port=port)
         
     except Exception as e:
         logging.error(f"Error starting application: {e}")

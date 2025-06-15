@@ -71,9 +71,10 @@ def clear_cache():
     Clear the entire cache.
     """
     global _CACHE, _CACHE_TIMESTAMPS
-    logging.info("Clearing cache")
+    logging.info(f"Clearing cache - currently has {len(_CACHE)} entries")
     _CACHE.clear()
     _CACHE_TIMESTAMPS.clear()
+    logging.info("Cache cleared successfully")
 
 
 def clear_cache_for_function(func_name: str):

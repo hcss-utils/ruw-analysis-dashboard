@@ -108,13 +108,23 @@ def create_connection_string() -> Optional[str]:
     # Otherwise use local configuration
     try:
         user = DB_CONFIG['user']
-        password = quote_plus(DB_CONFIG['password'])
+        password = DB_CONFIG['password']
         host = DB_CONFIG['host']
         port = DB_CONFIG['port']
         database = DB_CONFIG['database']
         
+        # Check if any required field is None
+        if not all([user, password, host, port, database]):
+            logging.error("Missing required database configuration")
+            logging.info("Falling back to demo mode with sample data")
+            DEMO_MODE = True
+            return None
+        
+        # Quote the password to handle special characters
+        password_quoted = quote_plus(password)
+        
         logging.info(f"Using local database configuration for {host}:{port}/{database}")
-        return f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{database}"
+        return f"postgresql+psycopg2://{user}:{password_quoted}@{host}:{port}/{database}"
     except Exception as e:
         logging.error(f"Error creating connection string from DB_CONFIG: {e}")
         logging.info("Falling back to demo mode with sample data")

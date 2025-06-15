@@ -245,64 +245,76 @@ def create_burstiness_tab_layout():
                             # Model cards container with horizontal layout
                             html.Div([
                                 # Basic Kleinberg model card
-                                dbc.Card([
-                                    dbc.CardBody([
-                                        html.H5("Basic Kleinberg", className="card-title text-center"),
-                                        html.P("2-state burst detection", className="card-text text-center small"),
-                                        html.Div(className="text-center"),
-                                    ], className="p-3"),
-                                ], id="model-card-basic", className="burst-model-card active", 
-                                style={"cursor": "pointer", "border": "2px solid #13376f"}),
+                                html.Div([
+                                    dbc.Card([
+                                        dbc.CardBody([
+                                            html.H5("Basic Kleinberg", className="card-title text-center"),
+                                            html.P("2-state burst detection", className="card-text text-center small"),
+                                            html.Div(className="text-center"),
+                                        ], className="p-3"),
+                                    ], id="model-card-basic-inner", className="burst-model-card active", 
+                                    style={"cursor": "pointer", "border": "2px solid #13376f"}),
+                                ], id="model-card-basic", n_clicks=0),
                                 
                                 # Multi-state Kleinberg model card
-                                dbc.Card([
-                                    dbc.CardBody([
-                                        html.H5("Multi-state", className="card-title text-center"),
-                                        html.P("Advanced burst detection", className="card-text text-center small"),
-                                        html.Div(className="text-center"),
-                                    ], className="p-3"),
-                                ], id="model-card-multi_state", className="burst-model-card",
-                                style={"cursor": "pointer", "border": "2px solid transparent"}),
+                                html.Div([
+                                    dbc.Card([
+                                        dbc.CardBody([
+                                            html.H5("Multi-state", className="card-title text-center"),
+                                            html.P("Advanced burst detection", className="card-text text-center small"),
+                                            html.Div(className="text-center"),
+                                        ], className="p-3"),
+                                    ], id="model-card-multi_state-inner", className="burst-model-card",
+                                    style={"cursor": "pointer", "border": "2px solid transparent"}),
+                                ], id="model-card-multi_state", n_clicks=0),
                                 
                                 # Statistical Validation model card
-                                dbc.Card([
-                                    dbc.CardBody([
-                                        html.H5("Statistical", className="card-title text-center"),
-                                        html.P("With validation", className="card-text text-center small"),
-                                        html.Div(className="text-center"),
-                                    ], className="p-3"),
-                                ], id="model-card-statistical", className="burst-model-card",
-                                style={"cursor": "pointer", "border": "2px solid transparent"}),
+                                html.Div([
+                                    dbc.Card([
+                                        dbc.CardBody([
+                                            html.H5("Statistical", className="card-title text-center"),
+                                            html.P("With validation", className="card-text text-center small"),
+                                            html.Div(className="text-center"),
+                                        ], className="p-3"),
+                                    ], id="model-card-statistical-inner", className="burst-model-card",
+                                    style={"cursor": "pointer", "border": "2px solid transparent"}),
+                                ], id="model-card-statistical", n_clicks=0),
                                 
                                 # Density-based model card
-                                dbc.Card([
-                                    dbc.CardBody([
-                                        html.H5("Density-based", className="card-title text-center"),
-                                        html.P("Density detection", className="card-text text-center small"),
-                                        html.Div(className="text-center"),
-                                    ], className="p-3"),
-                                ], id="model-card-density", className="burst-model-card",
-                                style={"cursor": "pointer", "border": "2px solid transparent"}),
+                                html.Div([
+                                    dbc.Card([
+                                        dbc.CardBody([
+                                            html.H5("Density-based", className="card-title text-center"),
+                                            html.P("Density detection", className="card-text text-center small"),
+                                            html.Div(className="text-center"),
+                                        ], className="p-3"),
+                                    ], id="model-card-density-inner", className="burst-model-card",
+                                    style={"cursor": "pointer", "border": "2px solid transparent"}),
+                                ], id="model-card-density", n_clicks=0),
                                 
                                 # Cascade Detection model card
-                                dbc.Card([
-                                    dbc.CardBody([
-                                        html.H5("Cascade", className="card-title text-center"),
-                                        html.P("Pattern detection", className="card-text text-center small"),
-                                        html.Div(className="text-center"),
-                                    ], className="p-3"),
-                                ], id="model-card-cascade", className="burst-model-card",
-                                style={"cursor": "pointer", "border": "2px solid transparent"}),
+                                html.Div([
+                                    dbc.Card([
+                                        dbc.CardBody([
+                                            html.H5("Cascade", className="card-title text-center"),
+                                            html.P("Pattern detection", className="card-text text-center small"),
+                                            html.Div(className="text-center"),
+                                        ], className="p-3"),
+                                    ], id="model-card-cascade-inner", className="burst-model-card",
+                                    style={"cursor": "pointer", "border": "2px solid transparent"}),
+                                ], id="model-card-cascade", n_clicks=0),
                                 
                                 # Events model card (disabled)
-                                dbc.Card([
-                                    dbc.CardBody([
-                                        html.H5("Events Model", className="card-title text-center text-muted"),
-                                        html.P("Not yet activated", className="card-text text-center small text-danger"),
-                                        html.Div(className="text-center"),
-                                    ], className="p-3"),
-                                ], id="model-card-events", className="burst-model-card",
-                                style={"cursor": "not-allowed", "border": "2px solid transparent", "opacity": "0.6"}),
+                                html.Div([
+                                    dbc.Card([
+                                        dbc.CardBody([
+                                            html.H5("Events Model", className="card-title text-center text-muted"),
+                                            html.P("Not yet activated", className="card-text text-center small text-danger"),
+                                            html.Div(className="text-center"),
+                                        ], className="p-3"),
+                                    ], id="model-card-events-inner", className="burst-model-card",
+                                    style={"cursor": "not-allowed", "border": "2px solid transparent", "opacity": "0.6"}),
+                                ], id="model-card-events", n_clicks=0),
                                 
                             ], className="burst-models-container", style={
                                 "display": "flex",
@@ -1244,12 +1256,12 @@ def register_burstiness_callbacks(app):
     @app.callback(
         [
             Output('burstiness-algorithm', 'data'),
-            Output('model-card-basic', 'className'),
-            Output('model-card-multi_state', 'className'),
-            Output('model-card-statistical', 'className'),
-            Output('model-card-density', 'className'),
-            Output('model-card-cascade', 'className'),
-            Output('model-card-events', 'className'),
+            Output('model-card-basic-inner', 'className'),
+            Output('model-card-multi_state-inner', 'className'),
+            Output('model-card-statistical-inner', 'className'),
+            Output('model-card-density-inner', 'className'),
+            Output('model-card-cascade-inner', 'className'),
+            Output('model-card-events-inner', 'className'),
         ],
         [
             Input('model-card-basic', 'n_clicks'),
@@ -1326,7 +1338,7 @@ def register_burstiness_callbacks(app):
             Output("multi-state-params", "style"),
             Output("statistical-params", "style")
         ],
-        [Input("burstiness-algorithm", "value")]
+        [Input("burstiness-algorithm", "data")]
     )
     def toggle_algorithm_options(algorithm_value):
         basic_style = {"display": "block" if algorithm_value == "basic" else "none"}
@@ -1411,7 +1423,7 @@ def register_burstiness_callbacks(app):
             State('burstiness-entities-top-n', 'value'),
             
             # Algorithm parameters
-            State('burstiness-algorithm', 'value'),
+            State('burstiness-algorithm', 'data'),
             State('burstiness-s-parameter', 'value'),
             State('burstiness-num-states', 'value'),
             State('burstiness-gamma-parameter', 'value'),

@@ -339,6 +339,83 @@ def fetch_taxonomy_combinations(
                 # Calculate taxonomy coverage
                 taxonomy_coverage = round((chunks_with_taxonomy / total_count * 100), 1) if total_count > 0 else 0
                 
+                # Get time series data for taxonomy assignments
+                time_series_query = """
+                SELECT 
+                    DATE_TRUNC('week', ud.date) as week,
+                    COUNT(DISTINCT t.id) as count
+                FROM taxonomy t
+                JOIN document_section_chunk dsc ON t.chunk_id = dsc.id
+                JOIN document_section ds ON dsc.document_section_id = ds.id
+                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                WHERE 1=1
+                """
+                
+                # Add filters to time series query
+                if lang_val is not None:
+                    time_series_query += " AND ud.language = :lang"
+                if db_val is not None:
+                    time_series_query += " AND ud.database = :db"
+                if source_type_condition:
+                    time_series_query += f" {source_type_condition}"
+                if date_range and len(date_range) == 2 and date_range[0] and date_range[1]:
+                    time_series_query += " AND ud.date BETWEEN :start_date AND :end_date"
+                
+                time_series_query += " GROUP BY week ORDER BY week;"
+                
+                time_series_df = pd.read_sql(text(time_series_query), conn, params=params)
+                
+                # Get per-database taxonomy coverage
+                db_coverage_query = """
+                SELECT 
+                    ud.database,
+                    COUNT(DISTINCT dsc.id) as total_chunks,
+                    COUNT(DISTINCT CASE WHEN t.id IS NOT NULL THEN dsc.id END) as chunks_with_taxonomy
+                FROM document_section_chunk dsc
+                JOIN document_section ds ON dsc.document_section_id = ds.id
+                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                LEFT JOIN taxonomy t ON dsc.id = t.chunk_id
+                WHERE 1=1
+                """
+                
+                # Add filters to db coverage query
+                if lang_val is not None:
+                    db_coverage_query += " AND ud.language = :lang"
+                if db_val is not None:
+                    db_coverage_query += " AND ud.database = :db"
+                if source_type_condition:
+                    db_coverage_query += f" {source_type_condition}"
+                if date_range and len(date_range) == 2 and date_range[0] and date_range[1]:
+                    db_coverage_query += " AND ud.date BETWEEN :start_date AND :end_date"
+                
+                db_coverage_query += " GROUP BY ud.database ORDER BY total_chunks DESC;"
+                
+                db_coverage_df = pd.read_sql(text(db_coverage_query), conn, params=params)
+                
+                # Process time series data
+                time_series_dates = []
+                time_series_values = []
+                
+                if not time_series_df.empty:
+                    time_series_dates = time_series_df['week'].dt.strftime('%Y-%m-%d').tolist()
+                    time_series_values = time_series_df['count'].tolist()
+                
+                # Process per-database coverage data
+                per_db_relevance = {}
+                
+                if not db_coverage_df.empty:
+                    for _, row in db_coverage_df.iterrows():
+                        db_name = row['database']
+                        total = int(row['total_chunks'])
+                        with_taxonomy = int(row['chunks_with_taxonomy'])
+                        without_taxonomy = total - with_taxonomy
+                        
+                        per_db_relevance[db_name] = {
+                            'relevant': with_taxonomy,
+                            'irrelevant': without_taxonomy,
+                            'total': total
+                        }
+                
                 taxonomy_data = {
                     "combinations_per_chunk": {
                         "labels": labels,
@@ -348,7 +425,12 @@ def fetch_taxonomy_combinations(
                     "chunks_with_taxonomy": chunks_with_taxonomy,
                     "taxonomy_coverage": taxonomy_coverage,
                     "avg_taxonomies_per_chunk": avg_taxonomies,
-                    "total_chunks": total_chunks
+                    "total_chunks": total_chunks,
+                    "time_series_relevant": {
+                        "dates": time_series_dates,
+                        "values": time_series_values
+                    },
+                    "per_database_relevance": per_db_relevance
                 }
                 
                 end_time = time.time()
@@ -366,7 +448,12 @@ def fetch_taxonomy_combinations(
                     "chunks_with_taxonomy": 0,
                     "taxonomy_coverage": 0,
                     "avg_taxonomies_per_chunk": 0,
-                    "total_chunks": 0
+                    "total_chunks": 0,
+                    "time_series_relevant": {
+                        "dates": [],
+                        "values": []
+                    },
+                    "per_database_relevance": {}
                 }
                 
     except Exception as e:
@@ -381,7 +468,12 @@ def fetch_taxonomy_combinations(
             "chunks_with_taxonomy": 0,
             "taxonomy_coverage": 0,
             "avg_taxonomies_per_chunk": 0,
-            "total_chunks": 0
+            "total_chunks": 0,
+            "time_series_relevant": {
+                "dates": [],
+                "values": []
+            },
+            "per_database_relevance": {}
         }
 
 
@@ -441,11 +533,11 @@ def fetch_chunks_data(
             irrelevant_chunks = total_chunks - relevant_chunks
             relevance_rate = round((relevant_chunks / total_chunks * 100), 1) if total_chunks > 0 else 0
             
-            # Get language distribution
+            # Get language distribution (ALL chunks)
             language_query = f"""
             SELECT 
                 ud.language,
-                COUNT(*) as count
+                COUNT(DISTINCT dsc.id) as count
             FROM document_section_chunk dsc
             JOIN document_section ds ON dsc.document_section_id = ds.id
             JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
@@ -457,11 +549,11 @@ def fetch_chunks_data(
             
             language_df = pd.read_sql(text(language_query), conn, params=params)
             
-            # Get database distribution
+            # Get database distribution (ALL chunks)
             database_query = f"""
             SELECT 
                 ud.database,
-                COUNT(*) as count
+                COUNT(DISTINCT dsc.id) as count
             FROM document_section_chunk dsc
             JOIN document_section ds ON dsc.document_section_id = ds.id
             JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
@@ -508,22 +600,161 @@ def fetch_chunks_data(
                 db_values = database_df['count'].tolist()
                 db_percentages = [round((v / total_chunks * 100), 1) if total_chunks > 0 else 0 for v in db_values]
             
+            # Get average chunk length for relevant chunks
+            avg_length_query = f"""
+            SELECT 
+                AVG(LENGTH(dsc.content)) as avg_chunk_length
+            FROM document_section_chunk dsc
+            JOIN document_section ds ON dsc.document_section_id = ds.id
+            JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+            INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only relevant chunks
+            WHERE 1=1
+            {filter_sql}
+            """
+            
+            avg_length_df = pd.read_sql(text(avg_length_query), conn, params=params)
+            avg_chunk_length = int(avg_length_df['avg_chunk_length'].iloc[0]) if not avg_length_df.empty and not pd.isna(avg_length_df['avg_chunk_length'].iloc[0]) else 0
+            
+            # Get language distribution for RELEVANT chunks only
+            language_relevant_query = f"""
+            SELECT 
+                ud.language,
+                COUNT(DISTINCT dsc.id) as count
+            FROM document_section_chunk dsc
+            JOIN document_section ds ON dsc.document_section_id = ds.id
+            JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+            INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only relevant chunks
+            WHERE 1=1
+            {filter_sql}
+            GROUP BY ud.language
+            ORDER BY count DESC;
+            """
+            
+            language_relevant_df = pd.read_sql(text(language_relevant_query), conn, params=params)
+            
+            # Get database distribution for RELEVANT chunks only
+            database_relevant_query = f"""
+            SELECT 
+                ud.database,
+                COUNT(DISTINCT dsc.id) as count
+            FROM document_section_chunk dsc
+            JOIN document_section ds ON dsc.document_section_id = ds.id
+            JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+            INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only relevant chunks
+            WHERE 1=1
+            {filter_sql}
+            GROUP BY ud.database
+            ORDER BY count DESC
+            LIMIT 10;
+            """
+            
+            database_relevant_df = pd.read_sql(text(database_relevant_query), conn, params=params)
+            
+            # Get time series data for relevant chunks
+            time_series_query = f"""
+            SELECT 
+                DATE_TRUNC('week', ud.date) as week,
+                COUNT(DISTINCT dsc.id) as count
+            FROM document_section_chunk dsc
+            JOIN document_section ds ON dsc.document_section_id = ds.id
+            JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+            INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only relevant chunks
+            WHERE 1=1
+            {filter_sql}
+            GROUP BY week
+            ORDER BY week;
+            """
+            
+            time_series_df = pd.read_sql(text(time_series_query), conn, params=params)
+            
+            # Get per-database relevance breakdown
+            db_relevance_query = f"""
+            SELECT 
+                ud.database,
+                COUNT(DISTINCT dsc.id) as total,
+                COUNT(DISTINCT CASE WHEN t.id IS NOT NULL THEN dsc.id END) as relevant
+            FROM document_section_chunk dsc
+            JOIN document_section ds ON dsc.document_section_id = ds.id
+            JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+            LEFT JOIN taxonomy t ON dsc.id = t.chunk_id
+            WHERE 1=1
+            {filter_sql}
+            GROUP BY ud.database
+            ORDER BY total DESC;
+            """
+            
+            db_relevance_df = pd.read_sql(text(db_relevance_query), conn, params=params)
+            
+            # Create language distribution data for RELEVANT chunks
+            lang_relevant_labels = []
+            lang_relevant_values = []
+            
+            if not language_relevant_df.empty:
+                lang_relevant_labels = language_relevant_df['language'].tolist()
+                lang_relevant_values = language_relevant_df['count'].tolist()
+            
+            # Create database distribution data for RELEVANT chunks
+            db_relevant_labels = []
+            db_relevant_values = []
+            
+            if not database_relevant_df.empty:
+                db_relevant_labels = database_relevant_df['database'].tolist()
+                db_relevant_values = database_relevant_df['count'].tolist()
+            
+            # Process time series data
+            time_series_dates = []
+            time_series_values = []
+            
+            if not time_series_df.empty:
+                time_series_dates = time_series_df['week'].dt.strftime('%Y-%m-%d').tolist()
+                time_series_values = time_series_df['count'].tolist()
+            
+            # Process per-database relevance data
+            per_db_relevance = {}
+            
+            if not db_relevance_df.empty:
+                for _, row in db_relevance_df.iterrows():
+                    db_name = row['database']
+                    total = int(row['total'])
+                    relevant = int(row['relevant'])
+                    irrelevant = total - relevant
+                    
+                    per_db_relevance[db_name] = {
+                        'relevant': relevant,
+                        'irrelevant': irrelevant,
+                        'total': total
+                    }
+            
             chunks_data = {
                 "total_chunks": total_chunks,
                 "relevant_chunks": relevant_chunks,
                 "irrelevant_chunks": irrelevant_chunks,
                 "relevance_rate": relevance_rate,
                 "avg_chunks_per_document": round(avg_chunks, 1),
+                "avg_chunk_length": avg_chunk_length,
                 "by_language": {
                     "labels": lang_labels,
                     "values": lang_values,
                     "percentages": lang_percentages
                 },
+                "by_language_relevant": {
+                    "labels": lang_relevant_labels,
+                    "values": lang_relevant_values
+                },
                 "top_databases": {
                     "labels": db_labels,
                     "values": db_values,
                     "percentages": db_percentages
-                }
+                },
+                "top_databases_relevant": {
+                    "labels": db_relevant_labels,
+                    "values": db_relevant_values
+                },
+                "time_series_relevant": {
+                    "dates": time_series_dates,
+                    "values": time_series_values
+                },
+                "per_database_relevance": per_db_relevance
             }
             
             end_time = time.time()
@@ -539,16 +770,30 @@ def fetch_chunks_data(
             "irrelevant_chunks": 0,
             "relevance_rate": 0,
             "avg_chunks_per_document": 0,
+            "avg_chunk_length": 0,
             "by_language": {
                 "labels": [],
                 "values": [],
                 "percentages": []
             },
+            "by_language_relevant": {
+                "labels": [],
+                "values": []
+            },
             "top_databases": {
                 "labels": [],
                 "values": [],
                 "percentages": []
-            }
+            },
+            "top_databases_relevant": {
+                "labels": [],
+                "values": []
+            },
+            "time_series_relevant": {
+                "dates": [],
+                "values": []
+            },
+            "per_database_relevance": {}
         }
 
 
@@ -630,7 +875,7 @@ def fetch_documents_data(
                 earliest_date = date_df['earliest_date'].iloc[0].strftime('%Y-%m-%d') if not date_df.empty and date_df['earliest_date'].iloc[0] is not None else 'N/A'
                 latest_date = date_df['latest_date'].iloc[0].strftime('%Y-%m-%d') if not date_df.empty and date_df['latest_date'].iloc[0] is not None else 'N/A'
             
-            # Get language distribution
+            # Get language distribution (ALL documents)
             language_query = f"""
             SELECT 
                 ud.language,
@@ -643,6 +888,25 @@ def fetch_documents_data(
             """
             
             language_df = pd.read_sql(text(language_query), conn, params=params)
+            
+            # Get language distribution (RELEVANT documents only)
+            language_relevant_query = f"""
+            SELECT 
+                ud.language,
+                COUNT(DISTINCT ud.id) as count
+            FROM uploaded_document ud
+            WHERE ud.id IN (
+                SELECT DISTINCT uploaded_document_id 
+                FROM document_section ds
+                JOIN document_section_chunk dsc ON ds.id = dsc.document_section_id
+                JOIN taxonomy t ON dsc.id = t.chunk_id
+            )
+            {filter_sql}
+            GROUP BY ud.language
+            ORDER BY count DESC;
+            """
+            
+            language_relevant_df = pd.read_sql(text(language_relevant_query), conn, params=params)
             
             # Get database distribution
             database_query = f"""
@@ -658,6 +922,66 @@ def fetch_documents_data(
             """
             
             database_df = pd.read_sql(text(database_query), conn, params=params)
+            
+            # Get database distribution (RELEVANT documents only)
+            database_relevant_query = f"""
+            SELECT 
+                ud.database,
+                COUNT(DISTINCT ud.id) as count
+            FROM uploaded_document ud
+            WHERE ud.id IN (
+                SELECT DISTINCT uploaded_document_id 
+                FROM document_section ds
+                JOIN document_section_chunk dsc ON ds.id = dsc.document_section_id
+                JOIN taxonomy t ON dsc.id = t.chunk_id
+            )
+            {filter_sql}
+            GROUP BY ud.database
+            ORDER BY count DESC
+            LIMIT 10;
+            """
+            
+            database_relevant_df = pd.read_sql(text(database_relevant_query), conn, params=params)
+            
+            # Get time series data for relevant documents
+            time_series_query = f"""
+            SELECT 
+                DATE_TRUNC('week', ud.date) as week,
+                COUNT(DISTINCT ud.id) as count
+            FROM uploaded_document ud
+            WHERE ud.id IN (
+                SELECT DISTINCT uploaded_document_id 
+                FROM document_section ds
+                JOIN document_section_chunk dsc ON ds.id = dsc.document_section_id
+                JOIN taxonomy t ON dsc.id = t.chunk_id
+            )
+            {filter_sql}
+            GROUP BY week
+            ORDER BY week;
+            """
+            
+            time_series_df = pd.read_sql(text(time_series_query), conn, params=params)
+            
+            # Get per-database relevance breakdown
+            db_relevance_query = f"""
+            SELECT 
+                ud.database,
+                COUNT(DISTINCT ud.id) as total,
+                COUNT(DISTINCT CASE WHEN rel.id IS NOT NULL THEN ud.id END) as relevant
+            FROM uploaded_document ud
+            LEFT JOIN (
+                SELECT DISTINCT uploaded_document_id as id
+                FROM document_section ds
+                JOIN document_section_chunk dsc ON ds.id = dsc.document_section_id
+                JOIN taxonomy t ON dsc.id = t.chunk_id
+            ) rel ON ud.id = rel.id
+            WHERE 1=1
+            {filter_sql}
+            GROUP BY ud.database
+            ORDER BY total DESC;
+            """
+            
+            db_relevance_df = pd.read_sql(text(db_relevance_query), conn, params=params)
             
             # Create language distribution data
             lang_labels = []
@@ -679,6 +1003,46 @@ def fetch_documents_data(
                 db_values = database_df['count'].tolist()
                 db_percentages = [round((v / total_documents * 100), 1) if total_documents > 0 else 0 for v in db_values]
             
+            # Create language distribution data for RELEVANT documents
+            lang_relevant_labels = []
+            lang_relevant_values = []
+            
+            if not language_relevant_df.empty:
+                lang_relevant_labels = language_relevant_df['language'].tolist()
+                lang_relevant_values = language_relevant_df['count'].tolist()
+            
+            # Create database distribution data for RELEVANT documents
+            db_relevant_labels = []
+            db_relevant_values = []
+            
+            if not database_relevant_df.empty:
+                db_relevant_labels = database_relevant_df['database'].tolist()
+                db_relevant_values = database_relevant_df['count'].tolist()
+            
+            # Process time series data
+            time_series_dates = []
+            time_series_values = []
+            
+            if not time_series_df.empty:
+                time_series_dates = time_series_df['week'].dt.strftime('%Y-%m-%d').tolist()
+                time_series_values = time_series_df['count'].tolist()
+            
+            # Process per-database relevance data
+            per_db_relevance = {}
+            
+            if not db_relevance_df.empty:
+                for _, row in db_relevance_df.iterrows():
+                    db_name = row['database']
+                    total = int(row['total'])
+                    relevant = int(row['relevant'])
+                    irrelevant = total - relevant
+                    
+                    per_db_relevance[db_name] = {
+                        'relevant': relevant,
+                        'irrelevant': irrelevant,
+                        'total': total
+                    }
+            
             documents_data = {
                 "total_documents": total_documents,
                 "relevant_documents": relevant_documents,
@@ -691,11 +1055,24 @@ def fetch_documents_data(
                     "values": lang_values,
                     "percentages": lang_percentages
                 },
+                "by_language_relevant": {
+                    "labels": lang_relevant_labels,
+                    "values": lang_relevant_values
+                },
                 "top_databases": {
                     "labels": db_labels,
                     "values": db_values,
                     "percentages": db_percentages
-                }
+                },
+                "top_databases_relevant": {
+                    "labels": db_relevant_labels,
+                    "values": db_relevant_values
+                },
+                "time_series_relevant": {
+                    "dates": time_series_dates,
+                    "values": time_series_values
+                },
+                "per_database_relevance": per_db_relevance
             }
             
             end_time = time.time()
@@ -1768,7 +2145,10 @@ def fetch_named_entities_data(
                 INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                 WHERE dsc.named_entities IS NOT NULL 
                     AND jsonb_typeof(dsc.named_entities) = 'array'
-                    AND jsonb_array_length(dsc.named_entities) > 0
+                    AND CASE 
+                        WHEN jsonb_typeof(dsc.named_entities) = 'array' THEN jsonb_array_length(dsc.named_entities) > 0
+                        ELSE FALSE
+                    END
                 {filter_sql}
                 LIMIT 10000  -- Reduced for Heroku memory constraints
             ),
@@ -1799,7 +2179,10 @@ def fetch_named_entities_data(
                 INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                 WHERE dsc.named_entities IS NOT NULL 
                     AND jsonb_typeof(dsc.named_entities) = 'array'
-                    AND jsonb_array_length(dsc.named_entities) > 0
+                    AND CASE 
+                        WHEN jsonb_typeof(dsc.named_entities) = 'array' THEN jsonb_array_length(dsc.named_entities) > 0
+                        ELSE FALSE
+                    END
                 {filter_sql}
                 LIMIT 10000  -- Reduced for Heroku memory constraints
             ),
@@ -1820,6 +2203,56 @@ def fetch_named_entities_data(
             
             top_entities_df = pd.read_sql(text(top_entities_query), conn, params=params)
             
+            # Get top entities by specific types (ORG, GPE/LOC, PERSON/PER)
+            top_by_type_query = f"""
+            WITH sampled_chunks AS (
+                SELECT dsc.named_entities
+                FROM document_section_chunk dsc
+                JOIN document_section ds ON dsc.document_section_id = ds.id
+                JOIN uploaded_document ud ON ds.uploaded_document_id = ud.id
+                INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
+                WHERE dsc.named_entities IS NOT NULL 
+                    AND jsonb_typeof(dsc.named_entities) = 'array'
+                    AND CASE 
+                        WHEN jsonb_typeof(dsc.named_entities) = 'array' THEN jsonb_array_length(dsc.named_entities) > 0
+                        ELSE FALSE
+                    END
+                {filter_sql}
+                LIMIT 10000  -- Reduced for Heroku memory constraints
+            ),
+            entity_data AS (
+                SELECT 
+                    jsonb_array_elements(sc.named_entities) as entity
+                FROM sampled_chunks sc
+            ),
+            entity_counts AS (
+                SELECT 
+                    entity->>'text' as entity_text,
+                    entity->>'label' as entity_type,
+                    COUNT(*) as count
+                FROM entity_data
+                WHERE entity->>'label' IN ('ORG', 'GPE', 'LOC', 'PERSON', 'PER')
+                GROUP BY entity_text, entity_type
+            ),
+            ranked_entities AS (
+                SELECT 
+                    entity_text,
+                    entity_type,
+                    count,
+                    ROW_NUMBER() OVER (PARTITION BY entity_type ORDER BY count DESC) as rank
+                FROM entity_counts
+            )
+            SELECT 
+                entity_text,
+                entity_type,
+                count
+            FROM ranked_entities
+            WHERE rank <= 15
+            ORDER BY entity_type, count DESC;
+            """
+            
+            top_by_type_df = pd.read_sql(text(top_by_type_query), conn, params=params)
+            
             # Get entity types distribution - ONLY from relevant chunks
             # OPTIMIZATION: Use sampling for performance
             entity_types_query = f"""
@@ -1831,7 +2264,10 @@ def fetch_named_entities_data(
                 INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                 WHERE dsc.named_entities IS NOT NULL 
                     AND jsonb_typeof(dsc.named_entities) = 'array'
-                    AND jsonb_array_length(dsc.named_entities) > 0
+                    AND CASE 
+                        WHEN jsonb_typeof(dsc.named_entities) = 'array' THEN jsonb_array_length(dsc.named_entities) > 0
+                        ELSE FALSE
+                    END
                 {filter_sql}
                 LIMIT 10000  -- Reduced for Heroku memory constraints
             ),
@@ -1905,7 +2341,10 @@ def fetch_named_entities_data(
                 INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                 WHERE dsc.named_entities IS NOT NULL 
                     AND jsonb_typeof(dsc.named_entities) = 'array'
-                    AND jsonb_array_length(dsc.named_entities) > 0
+                    AND CASE 
+                        WHEN jsonb_typeof(dsc.named_entities) = 'array' THEN jsonb_array_length(dsc.named_entities) > 0
+                        ELSE FALSE
+                    END
                 {filter_sql}
             )
             SELECT 
@@ -1931,7 +2370,10 @@ def fetch_named_entities_data(
                 INNER JOIN taxonomy t ON dsc.id = t.chunk_id  -- Only chunks with taxonomic classifications
                 WHERE dsc.named_entities IS NOT NULL 
                     AND jsonb_typeof(dsc.named_entities) = 'array'
-                    AND jsonb_array_length(dsc.named_entities) > 0
+                    AND CASE 
+                        WHEN jsonb_typeof(dsc.named_entities) = 'array' THEN jsonb_array_length(dsc.named_entities) > 0
+                        ELSE FALSE
+                    END
                 {filter_sql}
             )
             SELECT 
@@ -2015,6 +2457,16 @@ def fetch_named_entities_data(
                 db_unique = db_df['unique_entities'].tolist()
                 db_total = db_df['total_occurrences'].tolist()
             
+            # Process top entities by type
+            top_entities_by_type = {}
+            if not top_by_type_df.empty:
+                for entity_type in top_by_type_df['entity_type'].unique():
+                    type_data = top_by_type_df[top_by_type_df['entity_type'] == entity_type]
+                    top_entities_by_type[entity_type] = [
+                        {'entity': row['entity_text'], 'count': int(row['count'])}
+                        for _, row in type_data.iterrows()
+                    ]
+            
             named_entities_data = {
                 "total_unique_entities": unique_entities,
                 "total_entity_occurrences": total_entity_occurrences,
@@ -2047,7 +2499,8 @@ def fetch_named_entities_data(
                     "labels": db_labels,
                     "unique_entities": db_unique,
                     "total_occurrences": db_total
-                }
+                },
+                "top_entities_by_type": top_entities_by_type
             }
             
             end_time = time.time()
@@ -2089,7 +2542,8 @@ def fetch_named_entities_data(
                 "labels": [],
                 "unique_entities": [],
                 "total_occurrences": []
-            }
+            },
+            "top_entities_by_type": {}
         }
 
 
