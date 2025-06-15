@@ -39,10 +39,7 @@ def fetch_corpus_stats():
     
     try:
         engine = get_engine()
-        # Set a shorter timeout for this specific query
         with engine.connect() as conn:
-            # Set statement timeout to 30 seconds for this connection
-            conn.execute(text("SET statement_timeout = '30s'"))
             # FIXED: Use the same query structure as in fetch_documents_data
             # Start from uploaded_document table and use LEFT JOINs throughout
             relevant_docs_query = """
