@@ -1,86 +1,107 @@
-# Russian-Ukrainian War Data Analysis Dashboard
+# ruw-analysis-dashboard
 
-A comprehensive data analysis dashboard for exploring, searching, and visualizing data related to the Russian-Ukrainian War.
+## Overview
 
-## Features
+This is a Flask application built with Python.
 
-- **Explore Tab**: Hierarchical data exploration with sunburst visualization
-- **Search Tab**: Full-text search with categorized results
-- **Compare Tab**: Comparative analysis of different data subsets
-- **Burstiness Tab**: Trend detection using Kleinberg's burst detection algorithm
-- **Sources Tab**: Analysis of source distribution and statistics
-- **Keyword Consolidation**: Standardization of keyword variations for consistent analysis
+A web application originally hosted on Heroku.
 
-## Key Components
+## Technology Stack
 
-### Data Analysis
+- **Language**: Python
+- **Framework**: Flask
+- **Platform**: Originally deployed on Heroku
 
-- **Burst Detection**: Identifies significant spikes in frequency over time
-- **Co-occurrence Analysis**: Shows relationships between elements that burst together
-- **Timeline Visualization**: CiteSpace-style timeline of significant events
-- **Keyword Mapping**: Consolidates variant forms of keywords/entities to canonical forms
+## Project Structure
 
-### Technical Features
+- `requirements.txt` - Python dependencies
+- `Procfile` - Heroku process configuration
 
-- **Demo Mode**: Works without a database connection using sample data
-- **Responsive Design**: Adapts to different screen sizes
-- **Optimized Performance**: Caching and efficient database queries
-- **Heroku Deployment**: Ready for cloud deployment
-
-## Documentation
-
-For detailed information on specific features, refer to these documents:
-
-- [Keyword Mapping and Consolidation](KEYWORD_MAPPING.md)
-- [Heroku Deployment Guide](HEROKU_DEPLOYMENT.md)
-- [Implementation Summary](IMPLEMENTATION_SUMMARY.md)
-
-## Getting Started
+## Setup Instructions
 
 ### Prerequisites
 
-- Python 3.8+
-- PostgreSQL database (optional, can run in demo mode)
+- Python 3.8 or higher
+- pip
 
 ### Installation
 
-1. Clone the repository
-2. Create a virtual environment and install the dependencies
+1. Clone the repository:
    ```bash
-   python -m venv .venv
-   source .venv/bin/activate
+   git clone https://github.com/hcss-utils/ruw-analysis-dashboard.git
+   cd ruw-analysis-dashboard
+   ```
+
+2. Create a virtual environment:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
+
+3. Install dependencies:
+   ```bash
    pip install -r requirements.txt
    ```
-3. Set environment variables
-   ```bash
-   # For direct database configuration
-   export DB_USER=postgres
-   export DB_PASSWORD=your_password
-   export DB_HOST=your_db_host
-   export DB_PORT=5432
-   export DB_NAME=russian_ukrainian_war
 
-   # Or use DATABASE_URL for a full connection string ("demo" for demo mode)
-   export DATABASE_URL=your_database_url
-
-   export PORT=8051  # Optional, defaults to 8051
-   ```
-4. Run the application
+4. Set up environment variables:
    ```bash
-   python app.py
+   cp .env.example .env
+   # Edit .env with your configuration
    ```
+
+5. Run the application:
+   ```bash
+   python app.py  # or as specified in Procfile
+   ```
+
+## Environment Variables
+
+The following environment variables are required:
+
+- `DATABASE_URL`
 
 ## Deployment
 
-The dashboard is optimized for deployment on Heroku:
+### Deploying to Heroku
 
-1. Create a Heroku app
-2. Set the `DATABASE_URL` environment variable
-3. Deploy the code to Heroku
-4. The app will automatically start in demo mode if no valid database connection is available
+1. Create a new Heroku app:
+   ```bash
+   heroku create your-app-name
+   ```
 
-See [HEROKU_DEPLOYMENT.md](HEROKU_DEPLOYMENT.md) for detailed deployment instructions.
+2. Set environment variables:
+   ```bash
+   heroku config:set KEY=value
+   ```
+
+3. Deploy:
+   ```bash
+   git push heroku main
+   ```
+
+### Alternative Deployment Options
+
+- **Vercel**: For static sites and Next.js apps
+- **Netlify**: For static sites
+- **Railway**: Similar to Heroku, good for full-stack apps
+- **Render**: Another Heroku alternative
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
 ## License
 
-This project is licensed under the terms of the MIT License. See [LICENSE](LICENSE) for more information.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
+## Support
+
+For support, please open an issue in the GitHub repository.
+
+---
+
+*This application was originally hosted on Heroku and has been archived here for preservation and future use.*
