@@ -27,5 +27,5 @@ logger = logging.getLogger(__name__)
 # Database configuration - copied from config.py
 DB_CONFIG = {
     'user': 'postgres',
-    'password': os.environ.get('DB_PASSWORD', '***DB_PASSWORD_REDACTED***'),
+    'password': os.environ.get('DB_PASSWORD', os.environ.get("PG_WARDATASETS_PASSWORD", "")),
     'host': os
